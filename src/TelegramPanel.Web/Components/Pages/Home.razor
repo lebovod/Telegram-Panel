@@ -1,0 +1,153 @@
+@page "/"
+
+<PageTitle>Telegram Panel - 仪表盘</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">仪表盘</MudText>
+
+<MudGrid>
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-4" Elevation="2">
+            <div class="d-flex align-center">
+                <MudIcon Icon="@Icons.Material.Filled.AccountCircle" Size="Size.Large" Color="Color.Primary" Class="mr-3" />
+                <div>
+                    <MudText Typo="Typo.subtitle2" Class="mud-text-secondary">账号总数</MudText>
+                    <MudText Typo="Typo.h5">@_accountCount</MudText>
+                </div>
+            </div>
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-4" Elevation="2">
+            <div class="d-flex align-center">
+                <MudIcon Icon="@Icons.Material.Filled.Campaign" Size="Size.Large" Color="Color.Secondary" Class="mr-3" />
+                <div>
+                    <MudText Typo="Typo.subtitle2" Class="mud-text-secondary">频道总数</MudText>
+                    <MudText Typo="Typo.h5">@_channelCount</MudText>
+                </div>
+            </div>
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-4" Elevation="2">
+            <div class="d-flex align-center">
+                <MudIcon Icon="@Icons.Material.Filled.Group" Size="Size.Large" Color="Color.Tertiary" Class="mr-3" />
+                <div>
+                    <MudText Typo="Typo.subtitle2" Class="mud-text-secondary">群组总数</MudText>
+                    <MudText Typo="Typo.h5">@_groupCount</MudText>
+                </div>
+            </div>
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-4" Elevation="2">
+            <div class="d-flex align-center">
+                <MudIcon Icon="@Icons.Material.Filled.PlaylistAddCheck" Size="Size.Large" Color="Color.Success" Class="mr-3" />
+                <div>
+                    <MudText Typo="Typo.subtitle2" Class="mud-text-secondary">活跃任务</MudText>
+                    <MudText Typo="Typo.h5">@_activeTaskCount</MudText>
+                </div>
+            </div>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+<MudGrid Class="mt-4">
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.h6" Class="mb-3">快速操作</MudText>
+            <MudStack Row="true" Spacing="2" Class="flex-wrap">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Upload" Href="/accounts/import">
+                    导入账号
+                </MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.Add" Href="/channels/create">
+                    创建频道
+                </MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Tertiary" StartIcon="@Icons.Material.Filled.PersonAdd" Href="/batch/invite">
+                    批量邀请
+                </MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Info" StartIcon="@Icons.Material.Filled.Sync" OnClick="@SyncAllAccounts">
+                    同步数据
+                </MudButton>
+            </MudStack>
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.h6" Class="mb-3">系统状态</MudText>
+            <MudList T="string" Dense="true">
+                <MudListItem Icon="@Icons.Material.Filled.Circle" IconColor="Color.Success">
+                    在线账号: @_onlineAccountCount
+                </MudListItem>
+                <MudListItem Icon="@Icons.Material.Filled.Circle" IconColor="Color.Warning">
+                    受限账号: @_limitedAccountCount
+                </MudListItem>
+                <MudListItem Icon="@Icons.Material.Filled.Circle" IconColor="Color.Error">
+                    封禁账号: @_bannedAccountCount
+                </MudListItem>
+            </MudList>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+<MudPaper Class="pa-4 mt-4" Elevation="2">
+    <MudText Typo="Typo.h6" Class="mb-3">最近任务</MudText>
+    <MudTable Items="@_recentTasks" Hover="true" Dense="true">
+        <HeaderContent>
+            <MudTh>任务名称</MudTh>
+            <MudTh>类型</MudTh>
+            <MudTh>状态</MudTh>
+            <MudTh>进度</MudTh>
+            <MudTh>创建时间</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Name</MudTd>
+            <MudTd>@context.Type</MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">@context.Status</MudChip>
+            </MudTd>
+            <MudTd>
+                <MudProgressLinear Value="@context.Progress" Max="@context.Total" Color="Color.Primary" Size="Size.Small" />
+            </MudTd>
+            <MudTd>@context.CreatedAt.ToString("MM-dd HH:mm")</MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Class="pa-4">暂无任务记录</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private int _accountCount = 0;
+    private int _channelCount = 0;
+    private int _groupCount = 0;
+    private int _activeTaskCount = 0;
+    private int _onlineAccountCount = 0;
+    private int _limitedAccountCount = 0;
+    private int _bannedAccountCount = 0;
+    private List<TaskItem> _recentTasks = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        // TODO: 从服务获取真实数据
+        await Task.CompletedTask;
+    }
+
+    private void SyncAllAccounts()
+    {
+        // TODO: 实现同步逻辑
+    }
+
+    private Color GetStatusColor(string status) => status switch
+    {
+        "运行中" => Color.Info,
+        "已完成" => Color.Success,
+        "失败" => Color.Error,
+        _ => Color.Default
+    };
+
+    private record TaskItem(string Name, string Type, string Status, int Progress, int Total, DateTime CreatedAt);
+}

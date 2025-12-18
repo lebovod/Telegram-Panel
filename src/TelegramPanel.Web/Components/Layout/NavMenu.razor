@@ -1,0 +1,35 @@
+<MudNavMenu>
+    <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">
+        仪表盘
+    </MudNavLink>
+
+    <MudNavGroup Title="账号管理" Icon="@Icons.Material.Filled.AccountCircle" Expanded="true">
+        <MudNavLink Href="/accounts" Icon="@Icons.Material.Filled.People">账号列表</MudNavLink>
+        <MudNavLink Href="/accounts/import" Icon="@Icons.Material.Filled.Upload">导入账号</MudNavLink>
+        <MudNavLink Href="/accounts/login" Icon="@Icons.Material.Filled.Login">手机号登录</MudNavLink>
+        <MudNavLink Href="/accounts/categories" Icon="@Icons.Material.Filled.Category">账号分类</MudNavLink>
+    </MudNavGroup>
+
+    <MudNavGroup Title="频道管理" Icon="@Icons.Material.Filled.Campaign" Expanded="true">
+        <MudNavLink Href="/channels" Icon="@Icons.Material.Filled.List">频道列表</MudNavLink>
+        <MudNavLink Href="/channels/create" Icon="@Icons.Material.Filled.Add">创建频道</MudNavLink>
+        <MudNavLink Href="/channels/groups" Icon="@Icons.Material.Filled.Folder">频道分组</MudNavLink>
+    </MudNavGroup>
+
+    <MudNavGroup Title="群组管理" Icon="@Icons.Material.Filled.Group">
+        <MudNavLink Href="/groups" Icon="@Icons.Material.Filled.List">群组列表</MudNavLink>
+    </MudNavGroup>
+
+    <MudNavGroup Title="批量操作" Icon="@Icons.Material.Filled.PlaylistAddCheck">
+        <MudNavLink Href="/batch/invite" Icon="@Icons.Material.Filled.PersonAdd">批量邀请</MudNavLink>
+        <MudNavLink Href="/batch/admins" Icon="@Icons.Material.Filled.AdminPanelSettings">批量设管理</MudNavLink>
+    </MudNavGroup>
+
+    <MudNavLink Href="/tasks" Icon="@Icons.Material.Filled.Assignment">
+        任务中心
+    </MudNavLink>
+
+    <MudNavLink Href="/settings" Icon="@Icons.Material.Filled.Settings">
+        系统设置
+    </MudNavLink>
+</MudNavMenu>

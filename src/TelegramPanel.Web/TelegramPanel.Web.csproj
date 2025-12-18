@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>TelegramPanel.Web</RootNamespace>
+    <!-- 确保静态 Web 资源在开发和生产环境都能正确加载 -->
+    <StaticWebAssetsEnabled>true</StaticWebAssetsEnabled>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MudBlazor" Version="7.*" />
+    <PackageReference Include="Hangfire.Core" Version="1.8.*" />
+    <PackageReference Include="Hangfire.AspNetCore" Version="1.8.*" />
+    <PackageReference Include="Hangfire.InMemory" Version="1.0.*" />
+    <PackageReference Include="Serilog.AspNetCore" Version="8.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TelegramPanel.Core\TelegramPanel.Core.csproj" />
+    <ProjectReference Include="..\TelegramPanel.Data\TelegramPanel.Data.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,41 @@
+# .NET
+bin/
+obj/
+*.dll
+*.exe
+*.pdb
+
+# IDE
+.vs/
+.vscode/
+*.user
+*.suo
+
+# Serena
+.serena/
+
+# Logs
+logs/
+*.log
+
+# Sessions
+sessions/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# NuGet
+*.nupkg
+packages/
+
+# Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+
+# User-specific files
+*.rsuser
+*.userosscache
+*.sln.docstates
