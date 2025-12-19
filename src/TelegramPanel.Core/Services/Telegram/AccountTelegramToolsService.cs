@@ -1,6 +1,9 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Net.Mail;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Jpeg;
+using SixLabors.ImageSharp.Processing;
 using TelegramPanel.Core.Interfaces;
 using TelegramPanel.Core.Models;
 using TelegramPanel.Data.Entities;
@@ -599,16 +602,30 @@ public class AccountTelegramToolsService
             var client = await GetOrCreateConnectedClientAsync(accountId, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
 
-            // 先拷贝到内存流再上传：避免某些浏览器/反代环境下 Stream 读取不稳定导致 Telegram 侧报 PHOTO_FILE_MISSING
-            // UploadFileAsync 会自动关闭/释放传入的 stream，这里传 MemoryStream 更可控。
-            await using var ms = new MemoryStream();
+            // 先把原图读入内存，然后做“居中裁剪为正方形 + 缩放到 512x512 + JPEG 压缩”，再上传给 Telegram。
+            // 这样可以避免：原图过大、长宽比异常、某些上传流读取不稳定等问题。
+            await using var raw = new MemoryStream();
             if (fileStream.CanSeek)
                 fileStream.Position = 0;
 
-            await fileStream.CopyToAsync(ms, cancellationToken);
-            ms.Position = 0;
+            await fileStream.CopyToAsync(raw, cancellationToken);
+            raw.Position = 0;
 
-            var inputFile = await client.UploadFileAsync(ms, fileName);
+            using var image = await Image.LoadAsync(raw, cancellationToken);
+            image.Mutate(x => x.AutoOrient());
+
+            const int targetSize = 512;
+            image.Mutate(x => x.Resize(new ResizeOptions
+            {
+                Mode = ResizeMode.Crop,
+                Size = new Size(targetSize, targetSize)
+            }));
+
+            await using var encoded = new MemoryStream();
+            await image.SaveAsJpegAsync(encoded, new JpegEncoder { Quality = 85 }, cancellationToken);
+            encoded.Position = 0;
+
+            var inputFile = await client.UploadFileAsync(encoded, "avatar.jpg");
             cancellationToken.ThrowIfCancellationRequested();
 
             if (inputFile == null)
@@ -616,6 +633,10 @@ public class AccountTelegramToolsService
 
             await client.Photos_UploadProfilePhoto(inputFile, video: null, video_start_ts: null, video_emoji_markup: null, bot: null, fallback: false);
             return (true, null);
+        }
+        catch (UnknownImageFormatException)
+        {
+            return (false, "头像上传失败：不支持的图片格式（建议使用 JPG/PNG）");
         }
         catch (Exception ex)
         {
