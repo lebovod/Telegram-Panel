@@ -320,8 +320,10 @@ app.MapGet("/login", async (HttpContext http, IConfiguration configuration, Admi
     var title = "Telegram Panel 登录";
     var msg = error == "1" ? "<div class=\"mud-alert mud-alert-filled mud-alert-filled-error\" style=\"margin-bottom:12px;\">账号或密码错误</div>" : "";
     var disabledMsg = configured ? "" : "<div class=\"mud-alert mud-alert-filled mud-alert-filled-warning\" style=\"margin-bottom:12px;\">后台验证未启用</div>";
+    var initialUsername = System.Net.WebUtility.HtmlEncode((configuration["AdminAuth:InitialUsername"] ?? "admin").Trim());
+    var initialPassword = System.Net.WebUtility.HtmlEncode((configuration["AdminAuth:InitialPassword"] ?? "admin123").Trim());
     var initialHint = configured
-        ? $"<div class=\"mud-alert mud-alert-filled mud-alert-filled-info\" style=\"margin-bottom:12px;\">初始账号：<b>{System.Net.WebUtility.HtmlEncode(configuration[\"AdminAuth:InitialUsername\"] ?? \"admin\")}</b>，初始密码：<b>{System.Net.WebUtility.HtmlEncode(configuration[\"AdminAuth:InitialPassword\"] ?? \"admin123\")}</b>（首次登录后请立即修改）</div>"
+        ? $"<div class=\"mud-alert mud-alert-filled mud-alert-filled-info\" style=\"margin-bottom:12px;\">初始账号：<b>{initialUsername}</b>，初始密码：<b>{initialPassword}</b>（首次登录后请立即修改）</div>"
         : "";
 
     var html = $@"
