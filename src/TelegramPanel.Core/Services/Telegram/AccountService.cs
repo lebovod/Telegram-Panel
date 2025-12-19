@@ -230,6 +230,11 @@ public class AccountService : IAccountService
         return Task.FromResult(AccountStatus.Active);
     }
 
+    public Task ReleaseClientAsync(int accountId)
+    {
+        return _clientPool.RemoveClientAsync(accountId);
+    }
+
     private static AccountInfo MapToAccountInfo(int accountId, WTelegram.Client client)
     {
         var user = client.User!;

@@ -41,6 +41,11 @@ public interface IAccountService
     /// 检查账号状态
     /// </summary>
     Task<AccountStatus> CheckStatusAsync(int accountId);
+
+    /// <summary>
+    /// 释放并移除指定账号的 Telegram 客户端（用于避免 session 文件长期被占用）。
+    /// </summary>
+    Task ReleaseClientAsync(int accountId);
 }
 
 /// <summary>
