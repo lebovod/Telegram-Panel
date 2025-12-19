@@ -25,6 +25,9 @@ logs/
 appsettings.local.json
 src/TelegramPanel.Web/appsettings.local.json
 
+# Admin auth credentials
+src/TelegramPanel.Web/admin_auth.json
+
 # Sessions
 sessions/
 session数据/

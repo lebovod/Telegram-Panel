@@ -1,5 +1,8 @@
 using MudBlazor.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using System.Security.Claims;
 using Serilog;
 using TelegramPanel.Core;
 using TelegramPanel.Core.Services;
@@ -62,6 +65,20 @@ builder.Services.AddScoped<AccountExportService>();
 builder.Services.AddScoped<DataSyncService>();
 builder.Services.AddHostedService<BotAutoSyncBackgroundService>();
 builder.Services.AddHttpClient<TelegramBotApiClient>();
+
+// 后台账号密码验证（Cookie 登录）
+builder.Services.Configure<AdminAuthOptions>(builder.Configuration.GetSection("AdminAuth"));
+builder.Services.AddSingleton<AdminCredentialStore>();
+builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
+    {
+        options.Cookie.Name = "TelegramPanel.Auth";
+        options.LoginPath = "/login";
+        options.AccessDeniedPath = "/login";
+        options.SlidingExpiration = true;
+        options.ExpireTimeSpan = TimeSpan.FromDays(30);
+    });
+builder.Services.AddAuthorization();
 
 // TODO: 添加 Hangfire
 // builder.Services.AddHangfire(config => config.UseInMemoryStorage());
@@ -278,11 +295,122 @@ app.UseAntiforgery();
 // Serilog 请求日志
 app.UseSerilogRequestLogging();
 
-app.MapRazorComponents<TelegramPanel.Web.Components.App>()
+app.UseAuthentication();
+app.UseAuthorization();
+
+// 初始化后台登录凭据（首次启动会生成 admin_auth.json）
+var adminCredentials = app.Services.GetRequiredService<AdminCredentialStore>();
+await adminCredentials.EnsureInitializedAsync();
+
+// 登录页（独立 endpoint，避免与 RequireAuthorization 的 Razor Components 冲突）
+app.MapGet("/login", async (HttpContext http, IConfiguration configuration, AdminCredentialStore credentialStore) =>
+{
+    var enabled = credentialStore.Enabled;
+    var configured = enabled;
+
+    if (configured && http.User.Identity?.IsAuthenticated == true)
+        return Results.Redirect("/");
+
+    var q = http.Request.Query;
+    var error = q.TryGetValue("error", out var e) ? e.ToString() : "";
+    var returnUrl = q.TryGetValue("returnUrl", out var r) ? r.ToString() : "/";
+    if (!AdminAuthHelpers.IsLocalReturnUrl(returnUrl))
+        returnUrl = "/";
+
+    var title = "Telegram Panel 登录";
+    var msg = error == "1" ? "<div class=\"mud-alert mud-alert-filled mud-alert-filled-error\" style=\"margin-bottom:12px;\">账号或密码错误</div>" : "";
+    var disabledMsg = configured ? "" : "<div class=\"mud-alert mud-alert-filled mud-alert-filled-warning\" style=\"margin-bottom:12px;\">后台验证未启用</div>";
+    var initialHint = configured
+        ? $"<div class=\"mud-alert mud-alert-filled mud-alert-filled-info\" style=\"margin-bottom:12px;\">初始账号：<b>{System.Net.WebUtility.HtmlEncode(configuration[\"AdminAuth:InitialUsername\"] ?? \"admin\")}</b>，初始密码：<b>{System.Net.WebUtility.HtmlEncode(configuration[\"AdminAuth:InitialPassword\"] ?? \"admin123\")}</b>（首次登录后请立即修改）</div>"
+        : "";
+
+    var html = $@"
+<!DOCTYPE html>
+<html lang=""zh-CN"">
+<head>
+  <meta charset=""utf-8"" />
+  <meta name=""viewport"" content=""width=device-width, initial-scale=1.0"" />
+  <title>{title}</title>
+  <link href=""_content/MudBlazor/MudBlazor.min.css"" rel=""stylesheet"" />
+  <style>
+    body {{ background:#121212; color:#fff; font-family:Roboto,Arial; }}
+    .wrap {{ max-width:420px; margin:10vh auto; padding:24px; background:#1e1e2d; border-radius:12px; }}
+    .field {{ width:100%; padding:12px 14px; border-radius:8px; border:1px solid rgba(255,255,255,0.12); background:rgba(255,255,255,0.06); color:#fff; }}
+    .label {{ font-size:12px; opacity:0.8; margin:10px 0 6px; }}
+    .btn {{ width:100%; margin-top:14px; padding:10px 14px; border-radius:10px; border:0; background:#1976d2; color:#fff; font-weight:600; cursor:pointer; }}
+    .btn:disabled {{ opacity:0.5; cursor:not-allowed; }}
+  </style>
+</head>
+<body>
+  <div class=""wrap"">
+    <h2 style=""margin:0 0 8px;"">Telegram Panel</h2>
+    <div style=""opacity:0.8; margin-bottom:16px;"">后台登录</div>
+    {disabledMsg}
+    {initialHint}
+    {msg}
+    <form method=""post"" action=""/login"">
+      <input type=""hidden"" name=""returnUrl"" value=""{System.Net.WebUtility.HtmlEncode(returnUrl)}"" />
+      <div class=""label"">账号</div>
+      <input class=""field"" name=""username"" autocomplete=""username"" />
+      <div class=""label"">密码</div>
+      <input class=""field"" type=""password"" name=""password"" autocomplete=""current-password"" />
+      <button class=""btn"" type=""submit"" {(configured ? "" : "disabled")}>登录</button>
+    </form>
+  </div>
+</body>
+</html>";
+
+    return Results.Content(html, "text/html; charset=utf-8");
+}).AllowAnonymous();
+
+app.MapPost("/login", async (HttpContext http, AdminCredentialStore credentialStore) =>
+{
+    if (!credentialStore.Enabled)
+        return Results.Redirect("/login");
+
+    var form = await http.Request.ReadFormAsync();
+    var u = (form["username"].ToString() ?? "").Trim();
+    var p = (form["password"].ToString() ?? "").Trim();
+    var returnUrl = (form["returnUrl"].ToString() ?? "/").Trim();
+    if (!AdminAuthHelpers.IsLocalReturnUrl(returnUrl))
+        returnUrl = "/";
+
+    var ok = await credentialStore.ValidateAsync(u, p);
+    if (!ok)
+        return Results.Redirect($"/login?error=1&returnUrl={Uri.EscapeDataString(returnUrl)}");
+
+    var claims = new List<Claim>
+    {
+        new(ClaimTypes.Name, u),
+        new(ClaimTypes.Role, "Admin")
+    };
+    var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+    await http.SignInAsync(
+        CookieAuthenticationDefaults.AuthenticationScheme,
+        new ClaimsPrincipal(identity),
+        new AuthenticationProperties { IsPersistent = true, ExpiresUtc = DateTimeOffset.UtcNow.AddDays(30) });
+
+    if (credentialStore.MustChangePassword)
+        return Results.Redirect($"/admin/password?returnUrl={Uri.EscapeDataString(returnUrl)}");
+
+    return Results.Redirect(returnUrl);
+}).DisableAntiforgery().AllowAnonymous();
+
+app.MapGet("/logout", async (HttpContext http) =>
+{
+    await http.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+    return Results.Redirect("/login");
+}).AllowAnonymous();
+
+var adminAuthEnabled = adminCredentials.Enabled;
+
+var razor = app.MapRazorComponents<TelegramPanel.Web.Components.App>()
     .AddInteractiveServerRenderMode();
+if (adminAuthEnabled)
+    razor.RequireAuthorization();
 
 // 下载：导出账号 Zip（用于备份/迁移）
-app.MapGet("/downloads/accounts.zip", async (
+var accountsZipDownload = app.MapGet("/downloads/accounts.zip", async (
     HttpContext http,
     AccountManagementService accountManagement,
     AccountExportService exporter,
@@ -306,9 +434,11 @@ app.MapGet("/downloads/accounts.zip", async (
     var fileName = $"telegram-panel-accounts-{DateTime.UtcNow:yyyyMMdd-HHmmss}.zip";
     return Results.File(zipBytes, "application/zip", fileName);
 }).DisableAntiforgery();
+if (adminAuthEnabled)
+    accountsZipDownload.RequireAuthorization();
 
 // 下载：导出 Bot 邀请链接（文本）
-app.MapGet("/downloads/bots/{botId:int}/invites.txt", async (
+var botInvitesDownload = app.MapGet("/downloads/bots/{botId:int}/invites.txt", async (
     HttpContext http,
     int botId,
     BotManagementService botManagement,
@@ -357,6 +487,8 @@ app.MapGet("/downloads/bots/{botId:int}/invites.txt", async (
     var fileName = $"telegram-panel-bot-invites-{botId}-{DateTime.UtcNow:yyyyMMdd-HHmmss}.txt";
     return Results.File(bytes, "text/plain; charset=utf-8", fileName);
 }).DisableAntiforgery();
+if (adminAuthEnabled)
+    botInvitesDownload.RequireAuthorization();
 
 // TODO: Hangfire Dashboard
 // app.MapHangfireDashboard("/hangfire");
