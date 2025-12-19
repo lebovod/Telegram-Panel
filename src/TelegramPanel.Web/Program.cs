@@ -18,7 +18,7 @@ var builder = WebApplication.CreateBuilder(args);
 // 直接加载会抛 FileNotFoundException 导致容器不断重启，因此这里先确保文件存在一个空 JSON。
 try
 {
-    var localOverridePath = Path.Combine(builder.Environment.ContentRootPath, "appsettings.local.json");
+    var localOverridePath = LocalConfigFile.ResolvePath(builder.Configuration, builder.Environment);
     if (!File.Exists(localOverridePath))
         File.WriteAllText(localOverridePath, "{}", new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
 }
@@ -31,7 +31,8 @@ try
 {
     // 注意：如果该路径是“悬空符号链接”，配置系统可能会认为文件存在并尝试打开，从而抛 FileNotFoundException。
     // 本地覆盖配置不应该阻塞启动，因此这里兜底吞掉 FileNotFoundException。
-    builder.Configuration.AddJsonFile("appsettings.local.json", optional: true, reloadOnChange: true);
+    var localOverridePath = LocalConfigFile.ResolvePath(builder.Configuration, builder.Environment);
+    builder.Configuration.AddJsonFile(localOverridePath, optional: true, reloadOnChange: true);
 }
 catch (FileNotFoundException ex)
 {

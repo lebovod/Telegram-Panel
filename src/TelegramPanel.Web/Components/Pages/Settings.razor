@@ -10,6 +10,7 @@
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @inject IWebHostEnvironment Environment
+@using TelegramPanel.Web.Services
 
 <PageTitle>系统设置 - Telegram Panel</PageTitle>
 
@@ -150,7 +151,7 @@
     private int logRetentionDays = 30;
     private bool syncing = false;
 
-    private string LocalConfigPath => System.IO.Path.Combine(Environment.ContentRootPath, "appsettings.local.json");
+    private string LocalConfigPath => LocalConfigFile.ResolvePath(Configuration, Environment);
     private bool LocalConfigExists => System.IO.File.Exists(LocalConfigPath);
 
     protected override void OnInitialized()
@@ -188,8 +189,18 @@
             // 配置变更后清理客户端缓存，确保后续操作使用新 ApiId/ApiHash
             await TelegramClientPool.RemoveAllClientsAsync();
 
-            var fileInfo = new System.IO.FileInfo(localConfigPath);
-            Snackbar.Add($"API 配置已保存：{localConfigPath}（{fileInfo.Length} bytes）。已清理 Telegram 客户端缓存，后续操作将使用新配置。", Severity.Success);
+            string sizeHint;
+            try
+            {
+                var fileInfo = new System.IO.FileInfo(localConfigPath);
+                sizeHint = $"（{fileInfo.Length} bytes）";
+            }
+            catch
+            {
+                sizeHint = "";
+            }
+
+            Snackbar.Add($"API 配置已保存：{localConfigPath}{sizeHint}。已清理 Telegram 客户端缓存，后续操作将使用新配置。", Severity.Success);
             StateHasChanged();
         }
         catch (Exception ex)
@@ -240,11 +251,9 @@
     private async Task SaveLocalConfigAsync(System.Text.Json.Nodes.JsonObject root)
     {
         var json = root.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-        await System.IO.File.WriteAllTextAsync(
-            LocalConfigPath,
-            json,
-            new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false)
-        );
+        var path = LocalConfigPath;
+        await LocalConfigFile.EnsureExistsAsync(path);
+        await LocalConfigFile.WriteJsonAtomicallyAsync(path, json);
     }
 
     private static System.Text.Json.Nodes.JsonObject EnsureObject(System.Text.Json.Nodes.JsonObject root, string key)
