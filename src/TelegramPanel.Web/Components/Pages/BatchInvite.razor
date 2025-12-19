@@ -2,6 +2,7 @@
 @inject IChannelService ChannelService
 @inject AccountManagementService AccountManagement
 @inject ChannelManagementService ChannelManagement
+@inject ChannelGroupManagementService ChannelGroupManagement
 @inject BatchTaskManagementService TaskManagement
 @inject ISnackbar Snackbar
 @using TelegramPanel.Data.Entities
@@ -17,21 +18,55 @@
                 <MudText Typo="Typo.h6">配置邀请</MudText>
             </MudCardHeader>
             <MudCardContent>
-                <MudSelect @bind-Value="selectedAccountId" Label="执行账号" Variant="Variant.Outlined" Required="true">
-                    <MudSelectItem Value="0">-- 请选择账号 --</MudSelectItem>
+                <MudSelect @bind-Value="selectedAccountId" Label="执行账号（可选）" Variant="Variant.Outlined">
+                    <MudSelectItem Value="0">（默认：按频道创建账号执行）</MudSelectItem>
                     @foreach (var account in accounts)
                     {
-                        <MudSelectItem Value="@account.Id">@account.Phone (@account.Username)</MudSelectItem>
+                        <MudSelectItem Value="@account.Id">@FormatAccountLabel(account)</MudSelectItem>
                     }
                 </MudSelect>
 
-                <MudSelect @bind-Value="selectedChannelId" Label="目标频道" Variant="Variant.Outlined" Required="true" Class="mt-4">
-                    <MudSelectItem Value="0">-- 请选择频道 --</MudSelectItem>
-                    @foreach (var channel in channels)
+                <MudSelect @bind-Value="filterGroupId" Label="频道分组筛选（可选）" Variant="Variant.Outlined" Dense="true" Class="mt-4">
+                    <MudSelectItem Value="0">全部分组</MudSelectItem>
+                    @foreach (var g in groups)
                     {
-                        <MudSelectItem Value="@channel.Id">@channel.Title (@channel.Username)</MudSelectItem>
+                        <MudSelectItem Value="@g.Id">@g.Name</MudSelectItem>
                     }
                 </MudSelect>
+
+                <MudStack Row="true" Spacing="2" Class="mt-3">
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.SelectAll"
+                               Disabled="@channelsLoading" OnClick="SelectAllFilteredChannels">
+                        全选当前筛选
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Info" StartIcon="@Icons.Material.Filled.Checklist"
+                               Disabled="@(channelsLoading || filterGroupId <= 0)" OnClick="SelectCurrentGroupChannels">
+                        选择该分组全部
+                    </MudButton>
+                    <MudButton Variant="Variant.Text" Color="Color.Secondary" Disabled="@channelsLoading" OnClick="ClearSelectedChannels">
+                        清空选择
+                    </MudButton>
+                </MudStack>
+
+                <MudTable Items="@filteredChannels" Hover="true" Dense="true" Class="mt-3"
+                          MultiSelection="true" @bind-SelectedItems="selectedChannels"
+                          Loading="@channelsLoading">
+                    <HeaderContent>
+                        <MudTh>频道名称</MudTh>
+                        <MudTh>分组</MudTh>
+                        <MudTh>创建账号</MudTh>
+                        <MudTh>用户名</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="频道名称">@context.Title</MudTd>
+                        <MudTd DataLabel="分组">@(context.Group?.Name ?? "未分组")</MudTd>
+                        <MudTd DataLabel="创建账号">@(context.CreatorAccount?.Phone ?? context.CreatorAccountId.ToString())</MudTd>
+                        <MudTd DataLabel="用户名">@(string.IsNullOrWhiteSpace(context.Username) ? "-" : "@" + context.Username)</MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent>
+                        <MudText>暂无频道数据</MudText>
+                    </NoRecordsContent>
+                </MudTable>
 
                 <MudTextField @bind-Value="usernames" Label="用户名列表" Variant="Variant.Outlined" Lines="10" Class="mt-4"
                               HelperText="每行一个用户名" />
@@ -43,7 +78,7 @@
                 <MudButton Variant="Variant.Text" Color="Color.Secondary" OnClick="ClearForm">清空</MudButton>
                 <MudSpacer />
                 <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                           Disabled="@(selectedAccountId == 0 || selectedChannelId == 0 || string.IsNullOrEmpty(usernames) || inviting)"
+                           Disabled="@(selectedChannels.Count == 0 || string.IsNullOrEmpty(usernames) || inviting)"
                            OnClick="StartInvite">
                     @if (inviting)
                     {
@@ -71,7 +106,10 @@
                         <MudListItem T="string" Icon="@(result.Success ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Error)"
                                      IconColor="@(result.Success ? Color.Success : Color.Error)">
                             <div>
-                                <MudText Typo="Typo.body2">@("@" + result.Username)</MudText>
+                                <MudText Typo="Typo.body2">
+                                    <strong>@result.ChannelTitle</strong>：@("@" + result.Username)
+                                </MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">执行账号：@result.ExecutedByAccountId</MudText>
                                 @if (!result.Success && result.Error != null)
                                 {
                                     <MudText Typo="Typo.caption" Color="Color.Error">@result.Error</MudText>
@@ -84,7 +122,7 @@
                 {
                     <MudDivider Class="my-3" />
                     <MudText Typo="Typo.body2">
-                        成功：@inviteResults.Count(r => r.Success) / 总计：@inviteResults.Count
+                        成功：@inviteResults.Count(r => r.Success) / 总计：@inviteResults.Count（频道：@inviteResults.Select(r => r.ChannelTelegramId).Distinct().Count()）
                     </MudText>
                 }
             </MudCardContent>
@@ -93,20 +131,38 @@
 </MudGrid>
 
 @code {
+    [SupplyParameterFromQuery(Name = "channelId")] public int? ChannelDbIdQuery { get; set; }
+
     private List<Account> accounts = new();
     private List<Channel> channels = new();
+    private List<ChannelGroup> groups = new();
+
     private int selectedAccountId = 0;
-    private int selectedChannelId = 0;
+    private int filterGroupId = 0;
+    private bool channelsLoading = true;
+    private HashSet<Channel> selectedChannels = new();
+
     private string usernames = "";
     private int delayMs = 2000;
     private bool inviting = false;
 
-    private List<InviteResult> inviteResults = new();
+    private List<InviteOutcome> inviteResults = new();
+
+    private IEnumerable<Channel> filteredChannels =>
+        channels.Where(c => filterGroupId <= 0 || c.GroupId == filterGroupId);
 
     protected override async Task OnInitializedAsync()
     {
         await LoadAccounts();
+        await LoadGroups();
         await LoadChannels();
+
+        if (ChannelDbIdQuery.HasValue && ChannelDbIdQuery.Value > 0)
+        {
+            var c = channels.FirstOrDefault(x => x.Id == ChannelDbIdQuery.Value);
+            if (c != null)
+                selectedChannels = new HashSet<Channel> { c };
+        }
     }
 
     private async Task LoadAccounts()
@@ -122,17 +178,54 @@
         }
     }
 
+    private async Task LoadGroups()
+    {
+        try
+        {
+            var list = await ChannelGroupManagement.GetAllGroupsAsync();
+            groups = list.ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"加载频道分组失败：{ex.Message}", Severity.Error);
+        }
+    }
+
     private async Task LoadChannels()
     {
+        channelsLoading = true;
         try
         {
             var channelList = await ChannelManagement.GetAllChannelsAsync();
             channels = channelList.ToList();
+            selectedChannels = selectedChannels.Where(c => channels.Any(x => x.Id == c.Id)).ToHashSet();
         }
         catch (Exception ex)
         {
             Snackbar.Add($"加载频道列表失败：{ex.Message}", Severity.Error);
         }
+        finally
+        {
+            channelsLoading = false;
+        }
+    }
+
+    private void SelectAllFilteredChannels()
+    {
+        selectedChannels = filteredChannels.ToHashSet();
+    }
+
+    private void SelectCurrentGroupChannels()
+    {
+        if (filterGroupId <= 0)
+            return;
+
+        selectedChannels = channels.Where(c => c.GroupId == filterGroupId).ToHashSet();
+    }
+
+    private void ClearSelectedChannels()
+    {
+        selectedChannels = new HashSet<Channel>();
     }
 
     private async Task StartInvite()
@@ -142,7 +235,6 @@
 
         try
         {
-            // 解析用户名列表
             var usernameList = usernames.Split('\n', StringSplitOptions.RemoveEmptyEntries)
                 .Select(u => u.Trim().TrimStart('@'))
                 .Where(u => !string.IsNullOrEmpty(u))
@@ -154,42 +246,69 @@
                 return;
             }
 
-            // 获取选中的频道
-            var channel = channels.FirstOrDefault(c => c.Id == selectedChannelId);
-            if (channel == null)
+            var targetChannels = selectedChannels.ToList();
+            if (targetChannels.Count == 0)
             {
-                Snackbar.Add("未找到选中的频道", Severity.Error);
+                Snackbar.Add("请先勾选至少一个频道", Severity.Warning);
                 return;
             }
 
-            // 创建批量任务记录
             var task = new BatchTask
             {
                 TaskType = "invite",
-                Total = usernameList.Count,
+                Total = usernameList.Count * targetChannels.Count,
                 Completed = 0,
                 Failed = 0,
                 Config = System.Text.Json.JsonSerializer.Serialize(new
                 {
-                    ChannelId = channel.TelegramId,
-                    ChannelTitle = channel.Title,
-                    DelayMs = delayMs
+                    ChannelIds = targetChannels.Select(c => c.TelegramId).ToList(),
+                    ChannelTitles = targetChannels.Select(c => c.Title).ToList(),
+                    DelayMs = delayMs,
+                    ExecutedByAccountId = selectedAccountId
                 })
             };
             var createdTask = await TaskManagement.CreateTaskAsync(task);
             await TaskManagement.StartTaskAsync(createdTask.Id);
 
-            // 执行批量邀请
-            var results = await ChannelService.BatchInviteUsersAsync(selectedAccountId, channel.TelegramId, usernameList, delayMs);
-            inviteResults.AddRange(results);
+            var totalSuccess = 0;
+            var totalFailed = 0;
 
-            // 更新任务状态
-            var successCount = results.Count(r => r.Success);
-            var failedCount = results.Count(r => !r.Success);
-            await TaskManagement.UpdateTaskProgressAsync(createdTask.Id, successCount, failedCount);
+            foreach (var channel in targetChannels)
+            {
+                var executeAccountId = selectedAccountId > 0 ? selectedAccountId : channel.CreatorAccountId;
+
+                List<InviteResult> results;
+                try
+                {
+                    results = await ChannelService.BatchInviteUsersAsync(executeAccountId, channel.TelegramId, usernameList, delayMs);
+                }
+                catch (Exception ex)
+                {
+                    results = usernameList.Select(u => new InviteResult(u, false, ex.Message)).ToList();
+                }
+
+                foreach (var r in results)
+                {
+                    inviteResults.Add(new InviteOutcome(
+                        ChannelTelegramId: channel.TelegramId,
+                        ChannelTitle: channel.Title,
+                        Username: r.Username,
+                        Success: r.Success,
+                        Error: r.Error,
+                        ExecutedByAccountId: executeAccountId
+                    ));
+                }
+
+                var successCount = results.Count(r => r.Success);
+                var failedCount = results.Count - successCount;
+                totalSuccess += successCount;
+                totalFailed += failedCount;
+                await TaskManagement.UpdateTaskProgressAsync(createdTask.Id, totalSuccess, totalFailed);
+                StateHasChanged();
+            }
+
             await TaskManagement.CompleteTaskAsync(createdTask.Id, true);
-
-            Snackbar.Add($"邀请完成：{successCount}/{results.Count} 成功", successCount == results.Count ? Severity.Success : Severity.Warning);
+            Snackbar.Add($"邀请完成：成功 {totalSuccess}，失败 {totalFailed}（频道：{targetChannels.Count}）", totalFailed == 0 ? Severity.Success : Severity.Warning);
         }
         catch (Exception ex)
         {
@@ -206,4 +325,25 @@
         usernames = "";
         inviteResults.Clear();
     }
+
+    private static string FormatAccountLabel(Account account)
+    {
+        var nickname = string.IsNullOrWhiteSpace(account.Nickname) ? null : account.Nickname.Trim();
+        var username = string.IsNullOrWhiteSpace(account.Username) ? null : account.Username.Trim();
+
+        var namePart = nickname ?? account.Phone;
+        if (!string.IsNullOrWhiteSpace(username))
+            return $"{namePart} (@{username})";
+        return namePart;
+    }
+
+    private record InviteOutcome(
+        long ChannelTelegramId,
+        string ChannelTitle,
+        string Username,
+        bool Success,
+        string? Error,
+        int ExecutedByAccountId
+    );
 }
+

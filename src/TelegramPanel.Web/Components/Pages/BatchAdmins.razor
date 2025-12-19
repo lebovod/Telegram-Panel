@@ -23,7 +23,7 @@
                     <MudSelectItem Value="0">（默认：按频道创建账号执行）</MudSelectItem>
                     @foreach (var account in accounts)
                     {
-                        <MudSelectItem Value="@account.Id">@account.Phone (@account.Username)</MudSelectItem>
+                        <MudSelectItem Value="@account.Id">@FormatAccountLabel(account)</MudSelectItem>
                     }
                 </MudSelect>
 
@@ -390,6 +390,17 @@
         results.Clear();
     }
 
+    private static string FormatAccountLabel(Account account)
+    {
+        var nickname = string.IsNullOrWhiteSpace(account.Nickname) ? null : account.Nickname.Trim();
+        var username = string.IsNullOrWhiteSpace(account.Username) ? null : account.Username.Trim();
+
+        var namePart = nickname ?? account.Phone;
+        if (!string.IsNullOrWhiteSpace(username))
+            return $"{namePart} (@{username})";
+        return namePart;
+    }
+
     private class AdminPermissions
     {
         public bool ChangeInfo { get; set; } = true;
@@ -414,4 +425,3 @@
         int ExecutedByAccountId
     );
 }
-
