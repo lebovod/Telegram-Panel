@@ -253,12 +253,19 @@
         loading = true;
         try
         {
+            bool? probeResult = await DialogService.ShowMessageBox(
+                "批量刷新 Telegram 状态",
+                "是否进行深度探测（将对每个账号创建并删除一个测试频道，用于判断“创建频道接口是否被冻结”）？",
+                yesText: "深度探测",
+                cancelText: "普通刷新");
+
+            var probe = probeResult == true;
             var targets = filteredAccounts.ToList();
             foreach (var a in targets)
             {
                 try
                 {
-                    var result = await AccountTelegramTools.RefreshAccountStatusAsync(a.Id);
+                    var result = await AccountTelegramTools.RefreshAccountStatusAsync(a.Id, probeCreateChannel: probe);
                     telegramStatus[a.Id] = result;
                 }
                 catch (Exception ex)
