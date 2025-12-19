@@ -44,7 +44,9 @@ public class ChannelService : IChannelService
 
             try
             {
-                var isCreator = ReadBool(channel, "creator", "Creator", "is_creator", "IsCreator");
+                var isCreator =
+                    ReadBool(channel, "creator", "Creator", "is_creator", "IsCreator")
+                    || ReadFlagsHas(channel, flagName: "creator", memberNames: new[] { "flags", "Flags" });
                 if (!isCreator)
                     continue;
 
@@ -103,7 +105,9 @@ public class ChannelService : IChannelService
             {
                 // 先用 dialogs 里自带的权限信息过滤，避免对“非管理员频道”调用管理员接口导致 400 CHAT_ADMIN_REQUIRED
                 // （也能大幅提升同步速度）
-                var isCreator = ReadBool(channel, "creator", "Creator", "is_creator", "IsCreator");
+                var isCreator =
+                    ReadBool(channel, "creator", "Creator", "is_creator", "IsCreator")
+                    || ReadFlagsHas(channel, flagName: "creator", memberNames: new[] { "flags", "Flags" });
                 var adminRights = ReadObject(channel, "admin_rights", "AdminRights", "adminRights");
                 var isAdmin = isCreator || adminRights != null;
                 if (!isAdmin)
@@ -156,6 +160,56 @@ public class ChannelService : IChannelService
                 return b;
         }
         return false;
+    }
+
+    private static bool ReadFlagsHas(object obj, string flagName, string[] memberNames)
+    {
+        foreach (var memberName in memberNames)
+        {
+            if (!TryReadMember(obj, memberName, out var value) || value == null)
+                continue;
+
+            // 1) flags 直接就是枚举（最常见）
+            if (value is Enum enumValue)
+            {
+                var flagEnum = TryGetEnumFlag(enumValue.GetType(), flagName);
+                if (flagEnum != null)
+                    return enumValue.HasFlag(flagEnum);
+                continue;
+            }
+
+            // 2) flags 是 int/long 等基础类型（少见），尝试用嵌套 Flags 枚举来解码
+            if (value is int intFlags)
+                return ReadNumericFlagsHas(obj, flagName, intFlags);
+            if (value is long longFlags)
+                return ReadNumericFlagsHas(obj, flagName, longFlags);
+        }
+
+        return false;
+    }
+
+    private static bool ReadNumericFlagsHas(object obj, string flagName, long flagsValue)
+    {
+        var flagsType = obj.GetType().GetNestedType("Flags");
+        if (flagsType == null || !flagsType.IsEnum)
+            return false;
+
+        var flagEnum = TryGetEnumFlag(flagsType, flagName);
+        if (flagEnum == null)
+            return false;
+
+        var flagValue = Convert.ToInt64(flagEnum);
+        return (flagsValue & flagValue) == flagValue;
+    }
+
+    private static Enum? TryGetEnumFlag(Type enumType, string flagName)
+    {
+        var names = Enum.GetNames(enumType);
+        var match = names.FirstOrDefault(n => string.Equals(n, flagName, StringComparison.OrdinalIgnoreCase));
+        if (match == null)
+            return null;
+
+        return (Enum)Enum.Parse(enumType, match);
     }
 
     private static int ReadInt(object obj, int fallback, params string[] names)
