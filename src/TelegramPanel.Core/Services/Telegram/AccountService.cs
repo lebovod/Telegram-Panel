@@ -44,7 +44,7 @@ public class AccountService : IAccountService
 
         _logger.LogInformation("Starting login for phone {Phone}", phone);
 
-        var client = await _clientPool.GetOrCreateClientAsync(accountId, apiId, apiHash, sessionPath);
+        var client = await _clientPool.GetOrCreateClientAsync(accountId, apiId, apiHash, sessionPath, phoneNumber: phone, userId: null);
 
         string result;
         try
@@ -57,7 +57,7 @@ public class AccountService : IAccountService
             TryBackupCorruptedSessionIfExists(sessionPath);
             await _clientPool.RemoveClientAsync(accountId);
 
-            client = await _clientPool.GetOrCreateClientAsync(accountId, apiId, apiHash, sessionPath);
+            client = await _clientPool.GetOrCreateClientAsync(accountId, apiId, apiHash, sessionPath, phoneNumber: phone, userId: null);
             result = await client.Login(phone);
         }
 

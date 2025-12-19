@@ -23,7 +23,7 @@ public class TelegramClientPool : ITelegramClientPool, IDisposable
 
     public int ActiveClientCount => _clients.Count;
 
-    public async Task<Client> GetOrCreateClientAsync(int accountId, int apiId, string apiHash, string sessionPath)
+    public async Task<Client> GetOrCreateClientAsync(int accountId, int apiId, string apiHash, string sessionPath, string? phoneNumber = null, long? userId = null)
     {
         if (_clients.TryGetValue(accountId, out var existingClient))
         {
@@ -49,6 +49,7 @@ public class TelegramClientPool : ITelegramClientPool, IDisposable
             _logger.LogInformation("Creating new Telegram client for account {AccountId}", accountId);
 
             // 使用 config 回调设置 session 路径
+            phoneNumber = NormalizePhone(phoneNumber);
             string Config(string what)
             {
                 return what switch
@@ -56,6 +57,8 @@ public class TelegramClientPool : ITelegramClientPool, IDisposable
                     "api_id" => apiId.ToString(),
                     "api_hash" => apiHash,
                     "session_pathname" => sessionPath,
+                    "phone_number" => string.IsNullOrWhiteSpace(phoneNumber) ? null! : phoneNumber,
+                    "user_id" => userId.HasValue && userId.Value > 0 ? userId.Value.ToString() : null!,
                     _ => null!  // 使用 null! 抑制警告，这是 WTelegramClient 的预期行为
                 };
             }
@@ -76,6 +79,21 @@ public class TelegramClientPool : ITelegramClientPool, IDisposable
         {
             lockObj.Release();
         }
+    }
+
+    private static string? NormalizePhone(string? phone)
+    {
+        if (string.IsNullOrWhiteSpace(phone))
+            return null;
+
+        var digits = new char[phone.Length];
+        var count = 0;
+        foreach (var ch in phone)
+        {
+            if (ch >= '0' && ch <= '9')
+                digits[count++] = ch;
+        }
+        return count == 0 ? null : new string(digits, 0, count);
     }
 
     public Client? GetClient(int accountId)

@@ -348,12 +348,14 @@ public class AccountImportService
                     return new ImportResult(false, phone, userId, username, null, "该 .session 为 SQLite 格式且缺少 session_string，无法导入（请重新登录生成新 session）");
                 }
 
-                var ok = await TryCreateSessionFromSessionStringAsync(
+                var ok = await SessionDataConverter.TryCreateWTelegramSessionFromSessionStringAsync(
+                    sessionString: sessionKey,
                     apiId: apiId,
                     apiHash: apiHash.Trim(),
-                    sessionPath: targetSessionPath,
-                    sessionString: sessionKey
-                );
+                    targetSessionPath: targetSessionPath,
+                    phone: phone,
+                    userId: userId,
+                    logger: _logger);
 
                 if (!ok)
                 {
@@ -437,68 +439,7 @@ public class AccountImportService
         }
     }
 
-    private async Task<bool> TryCreateSessionFromSessionStringAsync(int apiId, string apiHash, string sessionPath, string sessionString)
-    {
-        try
-        {
-            var ok = await SessionDataConverter.TryConvertSessionFromSessionDataAsync(
-                phone: Path.GetFileNameWithoutExtension(sessionPath),
-                apiId: apiId,
-                apiHash: apiHash,
-                targetSessionPath: sessionPath,
-                logger: _logger
-            );
-
-            // 上面的转换是从 session数据 json 来的；这里导入时并不一定落到 session数据，
-            // 所以当找不到 json 时，直接按 base64url 解码写文件并验证连接。
-            if (!ok)
-            {
-                var bytes = DecodeBase64Url(sessionString);
-                if (bytes.Length == 0) return false;
-
-                var sessionsDir = Path.GetDirectoryName(Path.GetFullPath(sessionPath)) ?? Directory.GetCurrentDirectory();
-                Directory.CreateDirectory(sessionsDir);
-                await File.WriteAllBytesAsync(sessionPath, bytes);
-
-                string Config(string what) => what switch
-                {
-                    "api_id" => apiId.ToString(),
-                    "api_hash" => apiHash,
-                    "session_pathname" => sessionPath,
-                    _ => null!
-                };
-
-                using var client = new Client(Config);
-                await client.ConnectAsync();
-                ok = client.User != null;
-            }
-
-            return ok;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to create session from session_string");
-            try { if (File.Exists(sessionPath)) File.Delete(sessionPath); } catch { }
-            return false;
-        }
-    }
-
-    private static byte[] DecodeBase64Url(string input)
-    {
-        var s = input.Replace('-', '+').Replace('_', '/');
-        var mod = s.Length % 4;
-        if (mod == 2) s += "==";
-        else if (mod == 3) s += "=";
-
-        try
-        {
-            return Convert.FromBase64String(s);
-        }
-        catch
-        {
-            return Array.Empty<byte>();
-        }
-    }
+    // session_string 转换逻辑已收敛到 SessionDataConverter
 
     private static bool TryGetString(System.Text.Json.JsonElement root, out string? value, params string[] names)
     {

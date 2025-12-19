@@ -11,7 +11,7 @@ public interface ITelegramClientPool
     /// <summary>
     /// 获取或创建指定账号的客户端
     /// </summary>
-    Task<Client> GetOrCreateClientAsync(int accountId, int apiId, string apiHash, string sessionPath);
+    Task<Client> GetOrCreateClientAsync(int accountId, int apiId, string apiHash, string sessionPath, string? phoneNumber = null, long? userId = null);
 
     /// <summary>
     /// 获取已存在的客户端
