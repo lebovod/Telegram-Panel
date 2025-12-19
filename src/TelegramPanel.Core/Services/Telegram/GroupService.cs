@@ -122,6 +122,11 @@ public class GroupService : IGroupService
         if (string.IsNullOrWhiteSpace(account.SessionPath))
             throw new InvalidOperationException("账号缺少 SessionPath，无法创建 Telegram 客户端");
 
+        var absoluteSessionPath = Path.GetFullPath(account.SessionPath);
+        if (System.IO.File.Exists(absoluteSessionPath) && LooksLikeSqliteSession(absoluteSessionPath))
+            throw new InvalidOperationException($"该账号的 Session 文件为 SQLite 格式（常见于 Telethon/Pyrogram/Telegram Desktop）：{account.SessionPath}。本项目基于 WTelegramClient，无法直接复用该格式；请到【账号-手机号登录】重新登录生成新的 sessions/*.session 后再操作。");
+
+        await _clientPool.RemoveClientAsync(accountId);
         var client = await _clientPool.GetOrCreateClientAsync(accountId, account.ApiId, account.ApiHash, account.SessionPath);
 
         try
@@ -137,5 +142,22 @@ public class GroupService : IGroupService
             throw new InvalidOperationException("账号未登录或 session 已失效，请重新登录生成新的 session");
 
         return client;
+    }
+
+    private static bool LooksLikeSqliteSession(string filePath)
+    {
+        try
+        {
+            using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            Span<byte> header = stackalloc byte[16];
+            var read = fs.Read(header);
+            if (read < 15) return false;
+            var text = System.Text.Encoding.ASCII.GetString(header[..15]);
+            return string.Equals(text, "SQLite format 3", StringComparison.Ordinal);
+        }
+        catch
+        {
+            return false;
+        }
     }
 }
