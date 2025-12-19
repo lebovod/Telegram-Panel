@@ -99,7 +99,7 @@
                                 @if (!IsFinished)
                                 {
                                     <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                                               Disabled="@(logging || stepper == null)"
+                                               Disabled="@(logging || !stepperReady)"
                                                OnClick="@(async (MouseEventArgs _) => await NextStep())">
                                         @if (logging)
                                         {
@@ -123,6 +123,7 @@
 
 @code {
     private MudStepper? stepper;
+    private bool stepperReady;
     private bool logging = false;
 
     private int telegramApiId;
@@ -152,6 +153,18 @@
 
     private bool IsLoginActionStep =>
         stepper != null && stepper.ActiveIndex == stepper.Steps.Count - 2;
+
+    protected override Task OnAfterRenderAsync(bool firstRender)
+    {
+        // @ref 在首次渲染后才会赋值；需要触发一次刷新，否则按钮会一直保持“Disabled”，看起来像“点了没反应”
+        if (firstRender && !stepperReady && stepper != null)
+        {
+            stepperReady = true;
+            return InvokeAsync(StateHasChanged);
+        }
+
+        return Task.CompletedTask;
+    }
 
     private string NextButtonText => stepper?.ActiveIndex switch
     {
