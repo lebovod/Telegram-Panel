@@ -19,7 +19,7 @@
                     <MudSelectItem Value="0">-- 请选择账号 --</MudSelectItem>
                     @foreach (var account in accounts)
                     {
-                        <MudSelectItem Value="@account.Id">@account.Phone (@account.Username)</MudSelectItem>
+                        <MudSelectItem Value="@account.Id">@FormatAccountLabel(account)</MudSelectItem>
                     }
                 </MudSelect>
 
@@ -193,5 +193,16 @@
     {
         Navigation.NavigateTo("/channels");
         return Task.CompletedTask;
+    }
+
+    private static string FormatAccountLabel(Account account)
+    {
+        var nickname = string.IsNullOrWhiteSpace(account.Nickname) ? null : account.Nickname.Trim();
+        var username = string.IsNullOrWhiteSpace(account.Username) ? null : account.Username.Trim();
+
+        var namePart = nickname ?? account.Phone;
+        if (!string.IsNullOrWhiteSpace(username))
+            return $"{namePart} (@{username})";
+        return namePart;
     }
 }
