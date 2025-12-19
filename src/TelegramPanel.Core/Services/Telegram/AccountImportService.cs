@@ -5,6 +5,7 @@ using TelegramPanel.Core.Interfaces;
 using TelegramPanel.Core.Services;
 using TelegramPanel.Data.Entities;
 using System.IO.Compression;
+using WTelegram;
 
 namespace TelegramPanel.Core.Services.Telegram;
 
@@ -317,6 +318,8 @@ public class AccountImportService
             _ = TryGetString(root, out var firstName, "first_name", "firstName");
             _ = TryGetString(root, out var lastName, "last_name", "lastName");
             var nickname = BuildNickname(firstName, lastName, username);
+            _ = TryGetString(root, out var sessionKey, "session_string", "sessionString");
+            sessionKey = string.IsNullOrWhiteSpace(sessionKey) ? null : sessionKey.Trim();
 
             var dir = Path.GetDirectoryName(jsonPath) ?? extractDirFallback();
             var baseName = Path.GetFileNameWithoutExtension(jsonPath);
@@ -335,7 +338,33 @@ public class AccountImportService
             var sessionsPath = _configuration["Telegram:SessionsPath"] ?? "sessions";
             Directory.CreateDirectory(sessionsPath);
             var targetSessionPath = Path.Combine(sessionsPath, $"{phone}.session");
-            File.Copy(sessionCandidate, targetSessionPath, overwrite: true);
+
+            // 有些来源的 .session 实际上是 SQLite（Telethon/Pyrogram/Telegram Desktop 等），WTelegram 不能直接读取。
+            // 优先尝试使用 json 里的 session_string（映射到 WTelegram 的 session_key）来生成可用 session 文件。
+            if (LooksLikeSqliteSession(sessionCandidate))
+            {
+                if (string.IsNullOrWhiteSpace(sessionKey))
+                {
+                    return new ImportResult(false, phone, userId, username, null, "该 .session 为 SQLite 格式且缺少 session_string，无法导入（请重新登录生成新 session）");
+                }
+
+                var ok = await TryCreateSessionFromSessionKeyAsync(
+                    apiId: apiId,
+                    apiHash: apiHash.Trim(),
+                    sessionPath: targetSessionPath,
+                    sessionKey: sessionKey,
+                    userId: userId
+                );
+
+                if (!ok)
+                {
+                    return new ImportResult(false, phone, userId, username, null, "该 .session 为 SQLite 格式，且 session_string 无法转换为可用 session（请重新登录生成新 session）");
+                }
+            }
+            else
+            {
+                File.Copy(sessionCandidate, targetSessionPath, overwrite: true);
+            }
 
             // 入库：存在则更新，不存在则创建
             var existing = await _accountManagement.GetAccountByPhoneAsync(phone);
@@ -390,6 +419,49 @@ public class AccountImportService
         if (!string.IsNullOrWhiteSpace(display))
             return display;
         return string.IsNullOrWhiteSpace(username) ? null : username.Trim();
+    }
+
+    private static bool LooksLikeSqliteSession(string filePath)
+    {
+        try
+        {
+            using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            Span<byte> header = stackalloc byte[16];
+            var read = fs.Read(header);
+            if (read < 15) return false;
+            var text = System.Text.Encoding.ASCII.GetString(header[..15]);
+            return string.Equals(text, "SQLite format 3", StringComparison.Ordinal);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private async Task<bool> TryCreateSessionFromSessionKeyAsync(int apiId, string apiHash, string sessionPath, string sessionKey, long? userId)
+    {
+        try
+        {
+            string Config(string what) => what switch
+            {
+                "api_id" => apiId.ToString(),
+                "api_hash" => apiHash,
+                "session_pathname" => sessionPath,
+                "session_key" => sessionKey,
+                "user_id" => userId?.ToString() ?? null!,
+                _ => null!
+            };
+
+            using var client = new Client(Config);
+            await client.ConnectAsync();
+            return client.User != null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to create session from session_key");
+            try { if (File.Exists(sessionPath)) File.Delete(sessionPath); } catch { }
+            return false;
+        }
     }
 
     private static bool TryGetString(System.Text.Json.JsonElement root, out string? value, params string[] names)
