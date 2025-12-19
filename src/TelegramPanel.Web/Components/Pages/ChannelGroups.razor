@@ -1,5 +1,6 @@
 @page "/channels/groups"
 @inject ChannelGroupManagementService GroupManagement
+@inject ChannelManagementService ChannelManagement
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @using TelegramPanel.Data.Entities
@@ -55,6 +56,49 @@
                 </MudTable>
             </MudCardContent>
         </MudCard>
+
+        <MudCard Class="mt-4">
+            <MudCardHeader>
+                <MudText Typo="Typo.h6">分组绑定频道</MudText>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudSelect @bind-Value="assignGroupId" Label="选择分组" Variant="Variant.Outlined" Dense="true"
+                           @bind-Value:after="OnAssignGroupChanged">
+                    <MudSelectItem Value="0">-- 请选择分组 --</MudSelectItem>
+                    @foreach (var g in groups)
+                    {
+                        <MudSelectItem Value="@g.Id">@g.Name</MudSelectItem>
+                    }
+                </MudSelect>
+
+                <MudTable Items="@channels" Hover="true" Dense="true" Class="mt-3"
+                          MultiSelection="true" @bind-SelectedItems="selectedChannels"
+                          Loading="@channelsLoading">
+                    <HeaderContent>
+                        <MudTh>频道名称</MudTh>
+                        <MudTh>用户名</MudTh>
+                        <MudTh>创建账号</MudTh>
+                        <MudTh>当前分组</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="频道名称">@context.Title</MudTd>
+                        <MudTd DataLabel="用户名">@(string.IsNullOrWhiteSpace(context.Username) ? "-" : context.Username)</MudTd>
+                        <MudTd DataLabel="创建账号">@(context.CreatorAccount?.Phone ?? context.CreatorAccountId.ToString())</MudTd>
+                        <MudTd DataLabel="当前分组">@(context.Group?.Name ?? "未分组")</MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent>
+                        <MudText>暂无频道数据</MudText>
+                    </NoRecordsContent>
+                </MudTable>
+            </MudCardContent>
+            <MudCardActions>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           Disabled="@(assignGroupId == 0 || channelsLoading)"
+                           OnClick="@(async (MouseEventArgs _) => await SaveGroupAssignments())">
+                    保存勾选到分组
+                </MudButton>
+            </MudCardActions>
+        </MudCard>
     </MudItem>
 </MudGrid>
 
@@ -64,9 +108,15 @@
     private List<ChannelGroup> groups = new();
     private bool loading = true;
 
+    private List<Channel> channels = new();
+    private bool channelsLoading = true;
+    private int assignGroupId = 0;
+    private HashSet<Channel> selectedChannels = new();
+
     protected override async Task OnInitializedAsync()
     {
         await LoadGroups();
+        await LoadChannels();
     }
 
     private async Task LoadGroups()
@@ -84,6 +134,67 @@
         finally
         {
             loading = false;
+        }
+    }
+
+    private async Task LoadChannels()
+    {
+        channelsLoading = true;
+        try
+        {
+            var list = await ChannelManagement.GetAllChannelsAsync();
+            channels = list.ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"加载频道失败：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            channelsLoading = false;
+        }
+    }
+
+    private Task OnAssignGroupChanged()
+    {
+        selectedChannels = assignGroupId <= 0
+            ? new HashSet<Channel>()
+            : channels.Where(c => c.GroupId == assignGroupId).ToHashSet();
+        return Task.CompletedTask;
+    }
+
+    private async Task SaveGroupAssignments()
+    {
+        if (assignGroupId <= 0)
+        {
+            Snackbar.Add("请选择分组", Severity.Error);
+            return;
+        }
+
+        try
+        {
+            var currentlyInGroup = channels.Where(c => c.GroupId == assignGroupId).ToList();
+            var selected = selectedChannels.ToHashSet();
+
+            // 取消勾选的 -> 移出分组
+            foreach (var channel in currentlyInGroup.Where(c => !selected.Contains(c)))
+            {
+                await ChannelManagement.UpdateChannelGroupAsync(channel.Id, null);
+            }
+
+            // 新勾选的 -> 加入分组
+            foreach (var channel in selected.Where(c => c.GroupId != assignGroupId))
+            {
+                await ChannelManagement.UpdateChannelGroupAsync(channel.Id, assignGroupId);
+            }
+
+            await LoadChannels();
+            selectedChannels = channels.Where(c => c.GroupId == assignGroupId).ToHashSet();
+            Snackbar.Add("分组绑定已保存", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"保存失败：{ex.Message}", Severity.Error);
         }
     }
 
