@@ -48,8 +48,14 @@
                         <MudText Typo="Typo.caption" Class="mt-2" Color="Color.Info">
                             说明：验证码通常优先发送到已登录设备的 Telegram「系统通知（777000）」；没有可用设备时才可能发送短信/电话。
                         </MudText>
+                        @if (accountId == 0)
+                        {
+                            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true" Class="mt-3">
+                                当前并未成功发送验证码（可能是页面刚打开尚未连接、或你跳过了“发送验证码”步骤）。请回到上一步点击“发送验证码”。
+                            </MudAlert>
+                        }
                         <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Class="mt-3"
-                                   Disabled="@logging" OnClick="@(async (MouseEventArgs _) => await ResendCodeAsync())">
+                                   Disabled="@(logging || accountId == 0)" OnClick="@(async (MouseEventArgs _) => await ResendCodeAsync())">
                             重新发送验证码（尝试切换通道）
                         </MudButton>
                     </MudStep>
@@ -93,7 +99,7 @@
                                 @if (!IsFinished)
                                 {
                                     <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                                               Disabled="@logging"
+                                               Disabled="@(logging || stepper == null)"
                                                OnClick="@(async (MouseEventArgs _) => await NextStep())">
                                         @if (logging)
                                         {
@@ -102,7 +108,7 @@
                                         }
                                         else
                                         {
-                                            <span>@(IsLoginActionStep ? "登录" : "下一步")</span>
+                                            <span>@NextButtonText</span>
                                         }
                                     </MudButton>
                                 }
@@ -147,9 +153,20 @@
     private bool IsLoginActionStep =>
         stepper != null && stepper.ActiveIndex == stepper.Steps.Count - 2;
 
+    private string NextButtonText => stepper?.ActiveIndex switch
+    {
+        0 => "发送验证码",
+        1 => "验证验证码",
+        2 => "验证密码",
+        _ => "下一步"
+    };
+
     private async Task ResetStepperAsync()
     {
         if (stepper == null) return;
+        accountId = 0;
+        verificationCode = "";
+        password = "";
         await stepper.ResetAsync(true);
     }
 
@@ -196,6 +213,13 @@
                 else if (result.NextStep == "signup")
                 {
                     Snackbar.Add("此号码未注册Telegram，请先注册", Severity.Error);
+                }
+                else if (result.NextStep == "password")
+                {
+                    // 极少数情况下可能直接进入 2FA（例如会话已可恢复）
+                    Snackbar.Add("需要两步验证密码", Severity.Info);
+                    await stepper.NextStepAsync();
+                    await stepper.NextStepAsync();
                 }
                 else
                 {
