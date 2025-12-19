@@ -8,7 +8,9 @@ namespace TelegramPanel.Data.Repositories;
 public interface IChannelRepository : IRepository<Channel>
 {
     Task<Channel?> GetByTelegramIdAsync(long telegramId);
+    Task<IEnumerable<Channel>> GetCreatedAsync();
     Task<IEnumerable<Channel>> GetByCreatorAccountAsync(int accountId);
+    Task<IEnumerable<Channel>> GetForAccountAsync(int accountId, bool includeNonCreator);
     Task<IEnumerable<Channel>> GetByGroupAsync(int groupId);
     Task<IEnumerable<Channel>> GetBroadcastChannelsAsync();
 }

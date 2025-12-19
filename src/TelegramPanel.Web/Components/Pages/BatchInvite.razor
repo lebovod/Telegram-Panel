@@ -60,7 +60,7 @@
                     <RowTemplate>
                         <MudTd DataLabel="频道名称">@context.Title</MudTd>
                         <MudTd DataLabel="分组">@(context.Group?.Name ?? "未分组")</MudTd>
-                        <MudTd DataLabel="创建账号">@(context.CreatorAccount?.Phone ?? context.CreatorAccountId.ToString())</MudTd>
+                        <MudTd DataLabel="创建账号">@(context.CreatorAccount?.Phone ?? (context.CreatorAccountId?.ToString() ?? "（非系统创建）"))</MudTd>
                         <MudTd DataLabel="用户名">@(string.IsNullOrWhiteSpace(context.Username) ? "-" : "@" + context.Username)</MudTd>
                     </RowTemplate>
                     <NoRecordsContent>
@@ -275,12 +275,14 @@
 
             foreach (var channel in targetChannels)
             {
-                var executeAccountId = selectedAccountId > 0 ? selectedAccountId : channel.CreatorAccountId;
+                var executeAccountId = await ChannelManagement.ResolveExecuteAccountIdAsync(channel, selectedAccountId > 0 ? selectedAccountId : null);
+                if (executeAccountId is not > 0)
+                    throw new InvalidOperationException($"频道“{channel.Title}”没有可用的执行账号：请先【同步数据】或手动选择一个执行账号");
 
                 List<InviteResult> results;
                 try
                 {
-                    results = await ChannelService.BatchInviteUsersAsync(executeAccountId, channel.TelegramId, usernameList, delayMs);
+                    results = await ChannelService.BatchInviteUsersAsync(executeAccountId.Value, channel.TelegramId, usernameList, delayMs);
                 }
                 catch (Exception ex)
                 {
@@ -295,7 +297,7 @@
                         Username: r.Username,
                         Success: r.Success,
                         Error: r.Error,
-                        ExecutedByAccountId: executeAccountId
+                        ExecutedByAccountId: executeAccountId.Value
                     ));
                 }
 
@@ -346,4 +348,3 @@
         int ExecutedByAccountId
     );
 }
-

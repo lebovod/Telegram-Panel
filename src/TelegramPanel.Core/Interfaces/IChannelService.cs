@@ -13,6 +13,11 @@ public interface IChannelService
     Task<List<ChannelInfo>> GetOwnedChannelsAsync(int accountId);
 
     /// <summary>
+    /// 获取账号作为创建者/管理员的频道（包含“非本系统创建”的频道）
+    /// </summary>
+    Task<List<ChannelInfo>> GetAdminedChannelsAsync(int accountId);
+
+    /// <summary>
     /// 创建新频道
     /// </summary>
     Task<ChannelInfo> CreateChannelAsync(int accountId, string title, string about, bool isPublic = false);

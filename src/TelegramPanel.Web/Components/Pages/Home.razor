@@ -5,6 +5,7 @@
 @inject BatchTaskManagementService BatchTaskManagement
 @inject IChannelService ChannelService
 @inject IGroupService GroupService
+@inject TelegramPanel.Web.Services.DataSyncService DataSync
 @inject ISnackbar Snackbar
 
 <PageTitle>Telegram Panel - 仪表盘</PageTitle>
@@ -188,59 +189,12 @@
 
         try
         {
-            var accounts = (await AccountManagement.GetActiveAccountsAsync()).ToList();
-            int totalChannelsSynced = 0;
-            int totalGroupsSynced = 0;
+            var summary = await DataSync.SyncAllActiveAccountsAsync(CancellationToken.None);
 
-            foreach (var account in accounts)
-            {
-                try
-                {
-                    var channels = await ChannelService.GetOwnedChannelsAsync(account.Id);
-                    foreach (var channelInfo in channels)
-                    {
-                        var channel = new TelegramPanel.Data.Entities.Channel
-                        {
-                            TelegramId = channelInfo.TelegramId,
-                            AccessHash = channelInfo.AccessHash,
-                            Title = channelInfo.Title,
-                            Username = channelInfo.Username,
-                            IsBroadcast = channelInfo.IsBroadcast,
-                            MemberCount = channelInfo.MemberCount,
-                            About = channelInfo.About,
-                            CreatorAccountId = account.Id,
-                            CreatedAt = channelInfo.CreatedAt
-                        };
-                        await ChannelManagement.CreateOrUpdateChannelAsync(channel);
-                        totalChannelsSynced++;
-                    }
+            foreach (var failure in summary.AccountFailures)
+                Snackbar.Add($"账号 {failure.Phone} 同步失败：{failure.Error}", Severity.Warning);
 
-                    var groups = await GroupService.GetOwnedGroupsAsync(account.Id);
-                    foreach (var groupInfo in groups)
-                    {
-                        var group = new TelegramPanel.Data.Entities.Group
-                        {
-                            TelegramId = groupInfo.TelegramId,
-                            AccessHash = groupInfo.AccessHash,
-                            Title = groupInfo.Title,
-                            Username = groupInfo.Username,
-                            MemberCount = groupInfo.MemberCount,
-                            About = null,
-                            CreatorAccountId = account.Id
-                        };
-                        await GroupManagement.CreateOrUpdateGroupAsync(group);
-                        totalGroupsSynced++;
-                    }
-
-                    await AccountManagement.UpdateLastSyncTimeAsync(account.Id);
-                }
-                catch (Exception ex)
-                {
-                    Snackbar.Add($"账号 {account.Phone} 同步失败：{ex.Message}", Severity.Warning);
-                }
-            }
-
-            Snackbar.Add($"同步完成：{totalChannelsSynced} 个频道，{totalGroupsSynced} 个群组", Severity.Success);
+            Snackbar.Add($"同步完成：{summary.TotalChannelsSynced} 个频道，{summary.TotalGroupsSynced} 个群组", summary.AccountFailures.Count == 0 ? Severity.Success : Severity.Warning);
             await LoadDashboardAsync();
             StateHasChanged();
         }

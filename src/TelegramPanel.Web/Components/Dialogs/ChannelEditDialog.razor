@@ -56,6 +56,7 @@
     private bool loading = true;
     private bool saving;
     private Channel? channel;
+    private int? executeAccountId;
 
     private string title = "";
     private string? about;
@@ -83,6 +84,8 @@
             about = channel.About;
             isPublic = !string.IsNullOrWhiteSpace(channel.Username);
             username = channel.Username ?? "";
+
+            executeAccountId = await ChannelManagement.ResolveExecuteAccountIdAsync(channel);
         }
         catch (Exception ex)
         {
@@ -99,6 +102,12 @@
         if (channel == null)
             return;
 
+        if (executeAccountId is not > 0)
+        {
+            Snackbar.Add("该频道暂无可用的执行账号（请先同步频道关联账号，或选择有管理员权限的账号）", Severity.Warning);
+            return;
+        }
+
         saving = true;
         try
         {
@@ -106,9 +115,9 @@
             var newAbout = string.IsNullOrWhiteSpace(about) ? null : about.Trim();
             var newUsername = string.IsNullOrWhiteSpace(username) ? null : username.Trim().TrimStart('@');
 
-            await ChannelService.UpdateChannelInfoAsync(channel.CreatorAccountId, channel.TelegramId, newTitle, newAbout);
-            await ChannelService.SetChannelVisibilityAsync(channel.CreatorAccountId, channel.TelegramId, isPublic, newUsername);
-            await ChannelService.SetForwardingAllowedAsync(channel.CreatorAccountId, channel.TelegramId, forwardingAllowed);
+            await ChannelService.UpdateChannelInfoAsync(executeAccountId.Value, channel.TelegramId, newTitle, newAbout);
+            await ChannelService.SetChannelVisibilityAsync(executeAccountId.Value, channel.TelegramId, isPublic, newUsername);
+            await ChannelService.SetForwardingAllowedAsync(executeAccountId.Value, channel.TelegramId, forwardingAllowed);
 
             channel.Title = newTitle;
             channel.About = newAbout;

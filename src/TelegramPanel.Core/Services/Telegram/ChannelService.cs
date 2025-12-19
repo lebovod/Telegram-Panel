@@ -32,51 +32,67 @@ public class ChannelService : IChannelService
 
     public async Task<List<ChannelInfo>> GetOwnedChannelsAsync(int accountId)
     {
+        var all = await GetAdminedChannelsAsync(accountId);
+        var owned = all.Where(c => c.IsCreator).ToList();
+        _logger.LogInformation("Found {Count} owned channels for account {AccountId}", owned.Count, accountId);
+        return owned;
+    }
+
+    public async Task<List<ChannelInfo>> GetAdminedChannelsAsync(int accountId)
+    {
         var client = await GetOrCreateConnectedClientAsync(accountId);
 
-        var ownedChannels = new List<ChannelInfo>();
+        var channels = new List<ChannelInfo>();
         var dialogs = await client.Messages_GetAllDialogs();
 
-        foreach (var (id, chat) in dialogs.chats)
+        foreach (var (_, chat) in dialogs.chats)
         {
-            // 只处理频道（Channel类型且IsChannel=true表示广播频道）
-            if (chat is Channel channel && channel.IsActive)
+            if (chat is not Channel channel || !channel.IsActive)
+                continue;
+
+            try
             {
-                try
+                // 通过管理员列表判定：只有当本账号是管理员/创建者时，该接口通常才允许调用
+                var participants = await client.Channels_GetParticipants(channel, new ChannelParticipantsAdmins());
+
+                var selfId = client.User!.id;
+                var isCreator = participants.participants
+                    .OfType<ChannelParticipantCreator>()
+                    .Any(p => p.user_id == selfId);
+
+                var isAdmin = isCreator || participants.participants
+                    .OfType<ChannelParticipantAdmin>()
+                    .Any(p => p.user_id == selfId);
+
+                if (!isAdmin)
+                    continue;
+
+                var fullChannel = await client.Channels_GetFullChannel(channel);
+
+                channels.Add(new ChannelInfo
                 {
-                    // 通过获取管理员列表来检查当前用户是否为创建者
-                    var participants = await client.Channels_GetParticipants(channel, new ChannelParticipantsAdmins());
-                    var isCreator = participants.participants
-                        .OfType<ChannelParticipantCreator>()
-                        .Any(p => p.user_id == client.User!.id);
-
-                    if (!isCreator) continue;
-
-                    var fullChannel = await client.Channels_GetFullChannel(channel);
-
-                    ownedChannels.Add(new ChannelInfo
-                    {
-                        TelegramId = channel.id,
-                        AccessHash = channel.access_hash,
-                        Title = channel.title,
-                        Username = channel.MainUsername,
-                        IsBroadcast = channel.IsChannel,
-                        MemberCount = fullChannel.full_chat.ParticipantsCount,
-                        About = (fullChannel.full_chat as ChannelFull)?.about,
-                        CreatorAccountId = accountId,
-                        CreatedAt = channel.date,
-                        SyncedAt = DateTime.UtcNow
-                    });
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed to get channel info for {ChannelId}", channel.id);
-                }
+                    TelegramId = channel.id,
+                    AccessHash = channel.access_hash,
+                    Title = channel.title,
+                    Username = channel.MainUsername,
+                    IsBroadcast = channel.IsChannel,
+                    MemberCount = fullChannel.full_chat.ParticipantsCount,
+                    About = (fullChannel.full_chat as ChannelFull)?.about,
+                    CreatorAccountId = isCreator ? accountId : null,
+                    IsCreator = isCreator,
+                    IsAdmin = true,
+                    CreatedAt = channel.date,
+                    SyncedAt = DateTime.UtcNow
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to get channel info for {ChannelId}", channel.id);
             }
         }
 
-        _logger.LogInformation("Found {Count} owned channels for account {AccountId}", ownedChannels.Count, accountId);
-        return ownedChannels;
+        _logger.LogInformation("Found {Count} admined channels for account {AccountId}", channels.Count, accountId);
+        return channels;
     }
 
     public async Task<ChannelInfo> CreateChannelAsync(int accountId, string title, string about, bool isPublic = false)
@@ -113,6 +129,8 @@ public class ChannelService : IChannelService
             Title = channel.title,
             IsBroadcast = true,
             CreatorAccountId = accountId,
+            IsCreator = true,
+            IsAdmin = true,
             CreatedAt = channel.date,
             SyncedAt = DateTime.UtcNow
         };

@@ -58,6 +58,7 @@ builder.Services.AddTelegramPanelData(connectionString);
 // Telegram Panel 核心服务
 builder.Services.AddTelegramPanelCore();
 builder.Services.AddScoped<AccountExportService>();
+builder.Services.AddScoped<DataSyncService>();
 
 // TODO: 添加 Hangfire
 // builder.Services.AddHangfire(config => config.UseInMemoryStorage());
@@ -97,14 +98,23 @@ using (var scope = app.Services.CreateScope())
 
         if (migrations.Count > 0)
         {
-            // 只在「新库」或「已有迁移历史」时执行 Migrate；避免对已有表但无历史的库误执行迁移导致冲突
-            if (!hasAnyUserTables || hasHistory)
+            // 迁移策略：
+            // - 新库：直接 Migrate()
+            // - 已有迁移历史：直接 Migrate()
+            // - 已有表但无迁移历史：写入 baseline 到 __EFMigrationsHistory，再 Migrate()（避免永远无法升级）
+            if (!hasAnyUserTables)
+            {
+                db.Database.Migrate();
+            }
+            else if (hasHistory)
             {
                 db.Database.Migrate();
             }
             else
             {
-                Log.Warning("Database has schema tables but no __EFMigrationsHistory; skipping Migrate() to avoid conflicts");
+                var baseline = migrations.First(); // EF 返回的顺序为从旧到新
+                EnsureMigrationsHistoryBaseline(conn, baseline);
+                db.Database.Migrate();
             }
         }
         else
@@ -180,6 +190,64 @@ using (var scope = app.Services.CreateScope())
             catch (Exception ex)
             {
                 Log.Warning(ex, "Failed to ensure sqlite column {Table}.{Column}", tableName, columnName);
+            }
+        }
+
+        void EnsureMigrationsHistoryBaseline(System.Data.Common.DbConnection connection, string baselineMigrationId)
+        {
+            try
+            {
+                // 创建历史表（若不存在）
+                using (var cmd = connection.CreateCommand())
+                {
+                    cmd.CommandText = @"
+CREATE TABLE IF NOT EXISTS __EFMigrationsHistory (
+    MigrationId TEXT NOT NULL CONSTRAINT PK___EFMigrationsHistory PRIMARY KEY,
+    ProductVersion TEXT NOT NULL
+);";
+                    cmd.ExecuteNonQuery();
+                }
+
+                // 若 baseline 已存在则跳过
+                using (var check = connection.CreateCommand())
+                {
+                    check.CommandText = "SELECT COUNT(1) FROM __EFMigrationsHistory WHERE MigrationId = $id;";
+                    var p = check.CreateParameter();
+                    p.ParameterName = "$id";
+                    p.Value = baselineMigrationId;
+                    check.Parameters.Add(p);
+                    var exists = Convert.ToInt32(check.ExecuteScalar()) > 0;
+                    if (exists)
+                        return;
+                }
+
+                var productVersion = typeof(Microsoft.EntityFrameworkCore.DbContext)
+                    .Assembly
+                    .GetName()
+                    .Version?
+                    .ToString(3) ?? "8.0.0";
+
+                using (var insert = connection.CreateCommand())
+                {
+                    insert.CommandText = "INSERT INTO __EFMigrationsHistory (MigrationId, ProductVersion) VALUES ($id, $v);";
+                    var p1 = insert.CreateParameter();
+                    p1.ParameterName = "$id";
+                    p1.Value = baselineMigrationId;
+                    insert.Parameters.Add(p1);
+
+                    var p2 = insert.CreateParameter();
+                    p2.ParameterName = "$v";
+                    p2.Value = productVersion;
+                    insert.Parameters.Add(p2);
+
+                    insert.ExecuteNonQuery();
+                }
+
+                Log.Warning("Database has schema tables but no __EFMigrationsHistory; baselined migrations history with {MigrationId}", baselineMigrationId);
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "Failed to baseline __EFMigrationsHistory; database might not auto-upgrade");
             }
         }
     }

@@ -13,12 +13,13 @@ public class Channel
     public bool IsBroadcast { get; set; }
     public int MemberCount { get; set; }
     public string? About { get; set; }
-    public int CreatorAccountId { get; set; }
+    public int? CreatorAccountId { get; set; }
     public int? GroupId { get; set; }
     public DateTime? CreatedAt { get; set; }
     public DateTime SyncedAt { get; set; } = DateTime.UtcNow;
 
     // 导航属性
-    public Account CreatorAccount { get; set; } = null!;
+    public Account? CreatorAccount { get; set; }
+    public ICollection<AccountChannel> AccountChannels { get; set; } = new List<AccountChannel>();
     public ChannelGroup? Group { get; set; }
 }

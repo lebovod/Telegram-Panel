@@ -83,7 +83,7 @@
                     <RowTemplate>
                         <MudTd DataLabel="频道名称">@context.Title</MudTd>
                         <MudTd DataLabel="用户名">@(string.IsNullOrWhiteSpace(context.Username) ? "-" : context.Username)</MudTd>
-                        <MudTd DataLabel="创建账号">@(context.CreatorAccount?.Phone ?? context.CreatorAccountId.ToString())</MudTd>
+                        <MudTd DataLabel="创建账号">@(context.CreatorAccount?.Phone ?? (context.CreatorAccountId?.ToString() ?? "（非系统创建）"))</MudTd>
                         <MudTd DataLabel="当前分组">@(context.Group?.Name ?? "未分组")</MudTd>
                     </RowTemplate>
                     <NoRecordsContent>

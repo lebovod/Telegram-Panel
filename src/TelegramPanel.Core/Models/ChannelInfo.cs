@@ -14,7 +14,18 @@ public record ChannelInfo
     public bool IsBroadcast { get; init; }  // true=频道, false=超级群组
     public int MemberCount { get; init; }
     public string? About { get; init; }
-    public int CreatorAccountId { get; init; }
+    /// <summary>
+    /// 系统内“创建该频道”的账号（仅当本系统创建过该频道时才有值）
+    /// </summary>
+    public int? CreatorAccountId { get; init; }
+    /// <summary>
+    /// 对于当前 accountId：是否为频道创建者（拥有者）
+    /// </summary>
+    public bool IsCreator { get; init; }
+    /// <summary>
+    /// 对于当前 accountId：是否为管理员（包含创建者）
+    /// </summary>
+    public bool IsAdmin { get; init; }
     public int? GroupId { get; init; }
     public string? GroupName { get; init; }
     public DateTime? CreatedAt { get; init; }

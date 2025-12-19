@@ -37,12 +37,35 @@ public class ChannelRepository : Repository<Channel>, IChannelRepository
             .FirstOrDefaultAsync(c => c.TelegramId == telegramId);
     }
 
+    public async Task<IEnumerable<Channel>> GetCreatedAsync()
+    {
+        return await _dbSet
+            .Include(c => c.CreatorAccount)
+            .Include(c => c.Group)
+            .Where(c => c.CreatorAccountId != null)
+            .OrderByDescending(c => c.SyncedAt)
+            .ToListAsync();
+    }
+
     public async Task<IEnumerable<Channel>> GetByCreatorAccountAsync(int accountId)
     {
         return await _dbSet
             .Include(c => c.CreatorAccount)
             .Include(c => c.Group)
             .Where(c => c.CreatorAccountId == accountId)
+            .OrderByDescending(c => c.SyncedAt)
+            .ToListAsync();
+    }
+
+    public async Task<IEnumerable<Channel>> GetForAccountAsync(int accountId, bool includeNonCreator)
+    {
+        var links = _context.Set<AccountChannel>()
+            .Where(x => x.AccountId == accountId && (includeNonCreator || x.IsCreator));
+
+        return await _dbSet
+            .Include(c => c.CreatorAccount)
+            .Include(c => c.Group)
+            .Where(c => links.Any(x => x.ChannelId == c.Id))
             .OrderByDescending(c => c.SyncedAt)
             .ToListAsync();
     }

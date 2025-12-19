@@ -126,6 +126,7 @@
     private bool loading = true;
     private Channel? channel;
     private string creatorDisplay = "-";
+    private int? executeAccountId;
 
     private bool adminsLoading;
     private List<ChannelAdminInfo> admins = new();
@@ -149,10 +150,19 @@
             if (channel == null)
                 return;
 
-            var creator = await AccountManagement.GetAccountAsync(channel.CreatorAccountId);
-            creatorDisplay = creator == null
-                ? $"账号 {channel.CreatorAccountId}"
-                : $"{creator.Phone}（{creator.Nickname ?? creator.Username ?? creator.UserId.ToString()}）";
+            if (channel.CreatorAccountId.HasValue)
+            {
+                var creator = await AccountManagement.GetAccountAsync(channel.CreatorAccountId.Value);
+                creatorDisplay = creator == null
+                    ? $"账号 {channel.CreatorAccountId.Value}"
+                    : $"{creator.Phone}（{creator.Nickname ?? creator.Username ?? creator.UserId.ToString()}）";
+            }
+            else
+            {
+                creatorDisplay = "（非系统创建）";
+            }
+
+            executeAccountId = await ChannelManagement.ResolveExecuteAccountIdAsync(channel);
         }
         catch (Exception ex)
         {
@@ -169,10 +179,17 @@
         if (channel == null)
             return;
 
+        if (executeAccountId is not > 0)
+        {
+            admins.Clear();
+            Snackbar.Add("该频道暂无可用的执行账号（请先同步频道关联账号，或确保至少有一个账号是管理员）", Severity.Warning);
+            return;
+        }
+
         adminsLoading = true;
         try
         {
-            admins = await ChannelService.GetAdminsAsync(channel.CreatorAccountId, channel.TelegramId);
+            admins = await ChannelService.GetAdminsAsync(executeAccountId.Value, channel.TelegramId);
         }
         catch (Exception ex)
         {
@@ -190,10 +207,16 @@
         if (channel == null)
             return;
 
+        if (executeAccountId is not > 0)
+        {
+            Snackbar.Add("该频道暂无可用的执行账号，无法踢人（请先同步频道关联账号）", Severity.Warning);
+            return;
+        }
+
         kickLoading = true;
         try
         {
-            await ChannelService.KickUserAsync(channel.CreatorAccountId, channel.TelegramId, kickUsername, kickPermanent);
+            await ChannelService.KickUserAsync(executeAccountId.Value, channel.TelegramId, kickUsername, kickPermanent);
             Snackbar.Add("已执行踢出操作", Severity.Success);
             kickUsername = "";
         }
