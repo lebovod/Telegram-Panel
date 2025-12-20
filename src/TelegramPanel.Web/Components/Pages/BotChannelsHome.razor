@@ -65,6 +65,11 @@
                     设置管理员（已选）
                 </MudButton>
 
+                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.Category" Class="ml-2"
+                           Disabled="@(loading || selectedBotId <= 0 || selected.Count == 0)" OnClick="OpenBatchSetCategory">
+                    批量设置分类（@selected.Count）
+                </MudButton>
+
                 <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh"
                            Disabled="@(loading || selectedBotId <= 0)" OnClick="LoadBotData" Class="ml-2">
                     刷新
@@ -368,6 +373,72 @@
         {
             // 管理员设置后不影响本地数据，但用户可能期望刷新一下
             await LoadBotData();
+        }
+    }
+
+    private async Task OpenBatchSetCategory()
+    {
+        if (selectedBotId <= 0)
+            return;
+
+        if (selected.Count == 0)
+        {
+            Snackbar.Add("请先选择频道", Severity.Info);
+            return;
+        }
+
+        var parameters = new DialogParameters
+        {
+            ["Categories"] = categories,
+            ["SelectedCount"] = selected.Count
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = DialogService.Show<BotBatchSetCategoryDialog>("批量设置分类", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled && result.Data is int categoryId)
+        {
+            loading = true;
+            try
+            {
+                var channelIds = selected.Select(x => x.Id).ToList();
+                int successCount = 0;
+                int failCount = 0;
+
+                foreach (var channelId in channelIds)
+                {
+                    try
+                    {
+                        await BotManagement.SetChannelCategoryAsync(channelId, categoryId == 0 ? null : categoryId);
+                        successCount++;
+                    }
+                    catch
+                    {
+                        failCount++;
+                    }
+                }
+
+                if (failCount == 0)
+                {
+                    Snackbar.Add($"已成功设置 {successCount} 个频道的分类", Severity.Success);
+                }
+                else
+                {
+                    Snackbar.Add($"成功：{successCount} 个，失败：{failCount} 个", Severity.Warning);
+                }
+
+                // 重新加载数据
+                await LoadBotData();
+                selected.Clear();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"批量设置失败：{ex.Message}", Severity.Error);
+            }
+            finally
+            {
+                loading = false;
+            }
         }
     }
 
