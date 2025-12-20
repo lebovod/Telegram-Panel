@@ -94,7 +94,7 @@
                         <MudSelectItem Value="@(default(int?))">未分类</MudSelectItem>
                         @foreach (var c in categories)
                         {
-                            <MudSelectItem Value="@(c.Id)">@c.Name</MudSelectItem>
+                            <MudSelectItem Value="@((int?)c.Id)">@c.Name</MudSelectItem>
                         }
                     </MudSelect>
                 </MudTd>
