@@ -11,5 +11,7 @@ public static class BatchTaskTypes
 
     // User 任务（新增）
     public const string UserJoinSubscribe = "user_join_subscribe";
-}
 
+    // External API（记录到任务中心）
+    public const string ExternalApiKick = "external_api_kick";
+}
