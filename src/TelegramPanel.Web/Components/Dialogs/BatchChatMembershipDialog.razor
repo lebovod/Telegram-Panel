@@ -1,0 +1,232 @@
+@inject AccountManagementService AccountManagement
+@inject AccountTelegramToolsService AccountTelegramTools
+@inject TelegramPanel.Core.Services.AccountRiskService RiskService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@using TelegramPanel.Data.Entities
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="2">
+            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true">
+                @if (IsJoin)
+                {
+                    <span>将使用所选账号订阅频道/加入群组。支持输入多个链接/用户名，换行分隔。</span>
+                }
+                else
+                {
+                    <span>将使用所选账号退出群组/取消订阅频道。支持输入多个链接/用户名，换行分隔。</span>
+                }
+                <MudText Typo="Typo.body2" Class="mt-1">
+                    支持：<b>https://t.me/xxx</b>、<b>t.me/+hash</b>、<b>@@username</b>、<b>username</b>、<b>tg://join?invite=hash</b>
+                </MudText>
+            </MudAlert>
+
+            <MudText Typo="Typo.subtitle2">选中账号：@accounts.Count 个</MudText>
+
+            <MudTextField @bind-Value="linksText" Label="频道/群链接列表（换行分隔）" Variant="Variant.Outlined" Lines="8"
+                          HelperText="每行一个链接或用户名；将逐个账号依次执行。" />
+
+            <MudNumericField @bind-Value="delayMs" Label="操作间隔（毫秒）" Variant="Variant.Outlined" Min="0" Max="10000"
+                             HelperText="建议设置 1500-4000ms，避免触发风控（会额外加少量随机抖动）。" />
+
+            @if (running)
+            {
+                <MudDivider />
+                <MudText Typo="Typo.body2">进度：@done / @total（失败：@failed）</MudText>
+                <MudProgressLinear Value="@Progress" Color="Color.Primary" />
+                @if (!string.IsNullOrWhiteSpace(currentHint))
+                {
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">@currentHint</MudText>
+                }
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Text" Color="Color.Default" OnClick="CancelOrClose">
+            @(running ? "停止" : "关闭")
+        </MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Submit" Disabled="@(running || accounts.Count == 0)">
+            @(IsJoin ? "开始加群/订阅" : "开始退群/退订")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code
+{
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public List<int> AccountIds { get; set; } = new();
+    [Parameter] public string Operation { get; set; } = "join"; // join|leave
+
+    private List<Account> accounts = new();
+    private string linksText = "";
+    private int delayMs = 2000;
+    private bool running;
+    private int total;
+    private int done;
+    private int failed;
+    private string? currentHint;
+    private CancellationTokenSource? _cts;
+    private readonly Random _rand = new();
+
+    private bool IsJoin => string.Equals((Operation ?? "").Trim(), "join", StringComparison.OrdinalIgnoreCase);
+    private int Progress => total <= 0 ? 0 : (int)Math.Round(done * 100d / total);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var ids = (AccountIds ?? new List<int>()).Where(x => x > 0).Distinct().ToList();
+        if (ids.Count == 0)
+            return;
+
+        var all = (await AccountManagement.GetAllAccountsAsync()).ToList();
+        accounts = all.Where(a => ids.Contains(a.Id)).ToList();
+    }
+
+    private async Task Submit()
+    {
+        if (running || accounts.Count == 0)
+            return;
+
+        var links = ParseLines(linksText);
+        if (links.Count == 0)
+        {
+            Snackbar.Add("请至少输入一个频道/群链接", Severity.Warning);
+            return;
+        }
+
+        // 风控检查：加群/退群 都是敏感操作
+        var batchCheck = RiskService.CheckBatchAccounts(accounts);
+        if (batchCheck.HasRiskyAccounts)
+        {
+            var parameters = new DialogParameters
+            {
+                ["Message"] = $"检测到 {batchCheck.RiskyCount} 个风险账号",
+                ["DetailedMessage"] = batchCheck.GetRiskySummary(),
+                ["ShowRecommendations"] = true,
+                ["ShowExcludeOption"] = true,
+                ["RiskyAccounts"] = batchCheck.RiskyAccounts.ToList()
+            };
+            var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Large };
+            var dialog = DialogService.Show<RiskWarningDialog>("批量操作风控警告", parameters, options);
+            var r = await dialog.Result;
+            if (r.Canceled)
+                return;
+
+            if (r.Data is TelegramPanel.Core.Services.RiskWarningAction action
+                && action == TelegramPanel.Core.Services.RiskWarningAction.ExcludeRisky)
+            {
+                accounts = batchCheck.SafeAccounts.ToList();
+                if (accounts.Count == 0)
+                {
+                    Snackbar.Add("排除风险账号后无剩余账号", Severity.Info);
+                    return;
+                }
+            }
+        }
+
+        bool? confirm = await DialogService.ShowMessageBox(
+            "确认执行",
+            $"{(IsJoin ? "加群/订阅" : "退群/退订")}：{accounts.Count} 个账号 × {links.Count} 个目标（共 {accounts.Count * links.Count} 次操作）。是否继续？",
+            yesText: "继续", cancelText: "取消");
+
+        if (confirm != true)
+            return;
+
+        running = true;
+        total = accounts.Count * links.Count;
+        done = 0;
+        failed = 0;
+        currentHint = null;
+        _cts = new CancellationTokenSource();
+
+        var failures = new List<string>();
+
+        try
+        {
+            foreach (var a in accounts)
+            {
+                foreach (var link in links)
+                {
+                    _cts.Token.ThrowIfCancellationRequested();
+
+                    currentHint = $"{a.Phone} => {link}";
+                    StateHasChanged();
+
+                    (bool Success, string? Error, string? Title) result;
+                    if (IsJoin)
+                        result = await AccountTelegramTools.JoinChatOrChannelAsync(a.Id, link, _cts.Token);
+                    else
+                        result = await AccountTelegramTools.LeaveChatOrChannelAsync(a.Id, link, _cts.Token);
+
+                    done++;
+                    if (!result.Success)
+                    {
+                        failed++;
+                        failures.Add($"{a.Phone} => {link}：{result.Error}");
+                    }
+
+                    StateHasChanged();
+
+                    var wait = delayMs;
+                    if (wait < 0) wait = 0;
+                    if (wait > 10000) wait = 10000;
+                    var jitter = _rand.Next(0, 350);
+                    await Task.Delay(TimeSpan.FromMilliseconds(wait + jitter), _cts.Token);
+                }
+            }
+
+            var summary = $"完成：{done}/{total}（失败：{failed}）";
+            Snackbar.Add(summary, failed == 0 ? Severity.Success : Severity.Warning);
+
+            if (failures.Count > 0)
+            {
+                var details = string.Join(Environment.NewLine, failures.Take(80));
+                await DialogService.ShowMessageBox("失败明细（前 80 条）", details, "关闭");
+            }
+
+            MudDialog.Close(DialogResult.Ok(new { Done = done, Failed = failed }));
+        }
+        catch (OperationCanceledException)
+        {
+            Snackbar.Add("已停止执行", Severity.Info);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"执行异常：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            running = false;
+            currentHint = null;
+            _cts?.Dispose();
+            _cts = null;
+            StateHasChanged();
+        }
+    }
+
+    private void CancelOrClose()
+    {
+        if (running)
+        {
+            _cts?.Cancel();
+            return;
+        }
+
+        MudDialog.Close();
+    }
+
+    private static List<string> ParseLines(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return new List<string>();
+
+        return text
+            .Split(new[] { "\r\n", "\n", "\r" }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(x => (x ?? string.Empty).Trim())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+}
+

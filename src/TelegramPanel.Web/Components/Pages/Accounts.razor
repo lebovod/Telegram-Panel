@@ -19,56 +19,59 @@
         <MudTable Items="@filteredAccounts" Hover="true" Breakpoint="Breakpoint.Sm" Loading="@loading"
                   MultiSelection="true" @bind-SelectedItems="selectedAccounts">
             <ToolBarContent>
-                <MudText Typo="Typo.h6">已导入账号 (@accounts.Count)</MudText>
-                <MudSpacer />
-                <MudSelect @bind-Value="filterCategoryId" Label="分类" Variant="Variant.Outlined" Dense="true" Class="mr-2" Style="min-width: 160px;">
-                    <MudSelectItem Value="0">全部分类</MudSelectItem>
-                    @foreach (var c in categories)
-                    {
-                        <MudSelectItem Value="@c.Id">@c.Name</MudSelectItem>
-                    }
-                </MudSelect>
-                <MudTextField @bind-Value="searchString" Placeholder="搜索账号..." Adornment="Adornment.Start"
-                              AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0"
-                              Immediate="true" />
-                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@SelectionToggleIcon"
-                           Disabled="@(loading || !filteredAccounts.Any())" OnClick="CycleSelectionToggle" Class="ml-2">
-                    @SelectionToggleText
-                </MudButton>
-                <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Delete"
-                           Disabled="@(loading || selectedAccounts.Count == 0)" OnClick="DeleteSelectedAccounts" Class="ml-2">
-                    删除已选
-                </MudButton>
-                <MudButton Variant="Variant.Outlined" Color="Color.Warning" StartIcon="@Icons.Material.Filled.Password"
-                           Disabled="@(loading || selectedAccounts.Count == 0)" OnClick="OpenBatchChangeTwoFactorPassword" Class="ml-2">
-                    修改二级密码（已选）
-                </MudButton>
-                <MudButton Variant="Variant.Outlined" Color="Color.Warning" StartIcon="@Icons.Material.Filled.Edit"
-                           Disabled="@(loading || selectedAccounts.Count == 0)" OnClick="OpenBatchChangeNickname" Class="ml-2">
-                    批量改昵称（已选）
-                </MudButton>
-                <MudButton Variant="Variant.Outlined" Color="Color.Warning" StartIcon="@Icons.Material.Filled.AlternateEmail"
-                           Disabled="@(loading || selectedAccounts.Count == 0)" OnClick="OpenBatchChangeUsername" Class="ml-2">
-                    批量改用户名（已选）
-                </MudButton>
-                <MudButton Variant="Variant.Outlined" Color="Color.Warning" StartIcon="@Icons.Material.Filled.Edit"
-                           Disabled="@(loading || selectedAccounts.Count == 0)" OnClick="OpenBatchChangeBio" Class="ml-2">
-                    批量改Bio（已选）
-                </MudButton>
-                <MudButton Variant="Variant.Outlined" Color="Color.Info" StartIcon="@Icons.Material.Filled.Sync"
-                           Disabled="@loading" OnClick="BatchRefreshTelegramStatus" Class="ml-2">
-                    批量刷新状态
-                </MudButton>
-                <MudButton Variant="Variant.Outlined" Color="Color.Success" StartIcon="@Icons.Material.Filled.FolderZip"
-                           Disabled="@loading" OnClick="ExportSelectedAccounts" Class="ml-2">
-                    导出已选
-                </MudButton>
-                <MudButton Variant="Variant.Outlined" Color="Color.Success" StartIcon="@Icons.Material.Filled.FolderZip"
-                           Disabled="@loading" OnClick="ExportCurrentAccounts" Class="ml-2">
-                    导出当前列表
-                </MudButton>
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh"
-                           OnClick="LoadAccounts" Class="ml-2">刷新</MudButton>
+                <MudStack Spacing="1">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Style="flex-wrap: wrap;">
+                        <MudText Typo="Typo.h6">已导入账号 (@accounts.Count)</MudText>
+                        <MudSpacer />
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh"
+                                   Disabled="@loading" OnClick="LoadAccounts" Size="Size.Small">
+                            刷新
+                        </MudButton>
+                    </MudStack>
+
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Style="flex-wrap: wrap;">
+                        <MudSelect @bind-Value="filterCategoryId" Label="分类" Variant="Variant.Outlined" Dense="true" Class="mr-2" Style="min-width: 160px;">
+                            <MudSelectItem Value="0">全部分类</MudSelectItem>
+                            @foreach (var c in categories)
+                            {
+                                <MudSelectItem Value="@c.Id">@c.Name</MudSelectItem>
+                            }
+                        </MudSelect>
+                        <MudTextField @bind-Value="searchString" Placeholder="搜索账号..." Adornment="Adornment.Start"
+                                      AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0"
+                                      Immediate="true" />
+
+                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@SelectionToggleIcon"
+                                   Disabled="@(loading || !filteredAccounts.Any())" OnClick="CycleSelectionToggle" Size="Size.Small">
+                            @SelectionToggleText
+                        </MudButton>
+
+                        <MudButton Variant="Variant.Outlined" Color="Color.Info" StartIcon="@Icons.Material.Filled.Sync"
+                                   Disabled="@loading" OnClick="BatchRefreshTelegramStatus" Size="Size.Small">
+                            批量刷新状态
+                        </MudButton>
+
+                        <MudMenu Dense="true" Disabled="@loading">
+                            <ActivatorContent>
+                                <MudButton Variant="Variant.Outlined" Color="Color.Default" StartIcon="@Icons.Material.Filled.MoreHoriz"
+                                           Disabled="@loading" Size="Size.Small">
+                                    批量操作
+                                </MudButton>
+                            </ActivatorContent>
+                            <ChildContent>
+                                <MudMenuItem Disabled="@(selectedAccounts.Count == 0)" OnClick="OpenBatchJoinSubscribe">批量加群/订阅（已选）</MudMenuItem>
+                                <MudMenuItem Disabled="@(selectedAccounts.Count == 0)" OnClick="OpenBatchLeaveUnsubscribe">批量退群/退订（已选）</MudMenuItem>
+                                <MudMenuItem Disabled="@(selectedAccounts.Count == 0)" OnClick="OpenBatchChangeTwoFactorPassword">修改二级密码（已选）</MudMenuItem>
+                                <MudMenuItem Disabled="@(selectedAccounts.Count == 0)" OnClick="OpenBatchChangeNickname">批量改昵称（已选）</MudMenuItem>
+                                <MudMenuItem Disabled="@(selectedAccounts.Count == 0)" OnClick="OpenBatchChangeUsername">批量改用户名（已选）</MudMenuItem>
+                                <MudMenuItem Disabled="@(selectedAccounts.Count == 0)" OnClick="OpenBatchChangeBio">批量改Bio（已选）</MudMenuItem>
+                                <MudMenuItem Disabled="@(selectedAccounts.Count == 0)" OnClick="DeleteSelectedAccounts">删除已选</MudMenuItem>
+                                <MudMenuItem OnClick="ExportSelectedAccounts">导出已选</MudMenuItem>
+                                <MudMenuItem OnClick="ExportCurrentAccounts">导出当前列表</MudMenuItem>
+                            </ChildContent>
+                        </MudMenu>
+                    </MudStack>
+                </MudStack>
             </ToolBarContent>
             <HeaderContent>
                 <MudTh>手机号</MudTh>
@@ -127,6 +130,10 @@
                                    Disabled="@loading" OnClick="@(() => OpenEditUserProfile(context))" Title="编辑用户资料" />
                     <MudIconButton Icon="@Icons.Material.Filled.Sync" Size="Size.Small" Color="Color.Primary"
                                    Disabled="@loading" OnClick="@(() => RefreshTelegramStatus(context))" Title="刷新 Telegram 状态" />
+                    <MudIconButton Icon="@Icons.Material.Filled.GroupAdd" Size="Size.Small" Color="Color.Success"
+                                   Disabled="@loading" OnClick="@(() => OpenJoinSubscribe(context))" Title="加群/订阅" />
+                    <MudIconButton Icon="@Icons.Material.Filled.ExitToApp" Size="Size.Small" Color="Color.Warning"
+                                   Disabled="@loading" OnClick="@(() => OpenLeaveUnsubscribe(context))" Title="退群/退订" />
                     <MudIconButton Icon="@Icons.Material.Filled.MarkEmailUnread" Size="Size.Small" Color="Color.Info"
                                    Disabled="@loading" OnClick="@(() => OpenSystemInbox(context))" Title="系统通知（验证码）" />
                     <MudIconButton Icon="@Icons.Material.Filled.Devices" Size="Size.Small" Color="Color.Info"
@@ -376,6 +383,80 @@
         var result = await dialog.Result;
         if (result is { Canceled: false })
             await LoadAccounts();
+    }
+
+    private async Task OpenBatchJoinSubscribe()
+    {
+        if (loading)
+            return;
+
+        var ids = selectedAccounts.Select(a => a.Id).Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            Snackbar.Add("请先选择账号", Severity.Info);
+            return;
+        }
+
+        var parameters = new DialogParameters
+        {
+            ["AccountIds"] = ids,
+            ["Operation"] = "join"
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        DialogService.Show<TelegramPanel.Web.Components.Dialogs.BatchChatMembershipDialog>("批量加群/订阅", parameters, options);
+        await Task.CompletedTask;
+    }
+
+    private async Task OpenBatchLeaveUnsubscribe()
+    {
+        if (loading)
+            return;
+
+        var ids = selectedAccounts.Select(a => a.Id).Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            Snackbar.Add("请先选择账号", Severity.Info);
+            return;
+        }
+
+        var parameters = new DialogParameters
+        {
+            ["AccountIds"] = ids,
+            ["Operation"] = "leave"
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        DialogService.Show<TelegramPanel.Web.Components.Dialogs.BatchChatMembershipDialog>("批量退群/退订", parameters, options);
+        await Task.CompletedTask;
+    }
+
+    private async Task OpenJoinSubscribe(Account account)
+    {
+        if (loading)
+            return;
+
+        var parameters = new DialogParameters
+        {
+            ["AccountIds"] = new List<int> { account.Id },
+            ["Operation"] = "join"
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        DialogService.Show<TelegramPanel.Web.Components.Dialogs.BatchChatMembershipDialog>("加群/订阅", parameters, options);
+        await Task.CompletedTask;
+    }
+
+    private async Task OpenLeaveUnsubscribe(Account account)
+    {
+        if (loading)
+            return;
+
+        var parameters = new DialogParameters
+        {
+            ["AccountIds"] = new List<int> { account.Id },
+            ["Operation"] = "leave"
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        DialogService.Show<TelegramPanel.Web.Components.Dialogs.BatchChatMembershipDialog>("退群/退订", parameters, options);
+        await Task.CompletedTask;
     }
 
     private static string BuildTelegramStatusTitle(TelegramAccountStatusResult s)
