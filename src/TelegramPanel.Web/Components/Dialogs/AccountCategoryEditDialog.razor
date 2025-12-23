@@ -1,0 +1,54 @@
+@namespace TelegramPanel.Web.Components.Dialogs
+@using TelegramPanel.Data.Entities
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="2">
+            <MudText Typo="Typo.subtitle1">编辑账号分类</MudText>
+
+            <MudTextField T="string" @bind-Value="name" Label="分类名称" Variant="Variant.Outlined" Required="true" />
+            <MudColorPicker @bind-Value="color" Label="分类颜色" Class="mt-2" />
+            <MudTextField T="string" @bind-Value="description" Label="描述" Variant="Variant.Outlined" Lines="3" Class="mt-2" />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Text" Color="Color.Default" OnClick="Cancel">取消</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@string.IsNullOrWhiteSpace(name)" OnClick="Confirm">
+            保存
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code
+{
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public AccountCategory Category { get; set; } = default!;
+
+    private string name = "";
+    private MudColor color = "#9E9E9E";
+    private string? description;
+
+    protected override void OnParametersSet()
+    {
+        name = (Category?.Name ?? "").Trim();
+        description = (Category?.Description ?? "").Trim();
+        color = string.IsNullOrWhiteSpace(Category?.Color) ? "#9E9E9E" : Category!.Color!;
+    }
+
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+
+    private void Confirm()
+    {
+        var model = new AccountCategoryEditModel(
+            Name: name.Trim(),
+            Color: string.IsNullOrWhiteSpace(color.Value) ? null : color.Value,
+            Description: string.IsNullOrWhiteSpace(description) ? null : description!.Trim());
+
+        MudDialog.Close(DialogResult.Ok(model));
+    }
+}
+

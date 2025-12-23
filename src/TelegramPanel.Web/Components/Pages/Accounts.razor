@@ -63,6 +63,7 @@
                                 <MudMenuItem Disabled="@(selectedAccounts.Count == 0)" OnClick="OpenBatchJoinSubscribe">批量加群/订阅（已选）</MudMenuItem>
                                 <MudMenuItem Disabled="@(selectedAccounts.Count == 0)" OnClick="OpenBatchLeaveUnsubscribe">批量退群/退订（已选）</MudMenuItem>
                                 <MudMenuItem Disabled="@(selectedAccounts.Count == 0)" OnClick="OpenBatchChangeTwoFactorPassword">修改二级密码（已选）</MudMenuItem>
+                                <MudMenuItem Disabled="@(selectedAccounts.Count == 0)" OnClick="OpenBatchSetAccountCategory">批量修改分类（已选）</MudMenuItem>
                                 <MudMenuItem Disabled="@(selectedAccounts.Count == 0)" OnClick="OpenBatchChangeNickname">批量改昵称（已选）</MudMenuItem>
                                 <MudMenuItem Disabled="@(selectedAccounts.Count == 0)" OnClick="OpenBatchChangeUsername">批量改用户名（已选）</MudMenuItem>
                                 <MudMenuItem Disabled="@(selectedAccounts.Count == 0)" OnClick="OpenBatchChangeBio">批量改Bio（已选）</MudMenuItem>
@@ -317,6 +318,63 @@
         var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
         DialogService.Show<TelegramPanel.Web.Components.Dialogs.ChangeTwoFactorPasswordDialog>("批量修改二级密码", parameters, options);
         await Task.CompletedTask;
+    }
+
+    private async Task OpenBatchSetAccountCategory()
+    {
+        if (loading)
+            return;
+
+        var targets = selectedAccounts.Select(a => a.Id).Distinct().ToList();
+        if (targets.Count == 0)
+        {
+            Snackbar.Add("请先选择账号", Severity.Info);
+            return;
+        }
+
+        if (categories.Count == 0)
+            await LoadCategories();
+
+        var parameters = new DialogParameters
+        {
+            ["Categories"] = categories,
+            ["SelectedCount"] = targets.Count
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = DialogService.Show<TelegramPanel.Web.Components.Dialogs.BatchSetAccountCategoryDialog>("批量修改分类", parameters, options)!;
+        var result = await dialog.Result;
+        if (result is not { Canceled: false })
+            return;
+
+        var categoryIdRaw = result.Data is int x ? x : 0;
+        int? categoryId = categoryIdRaw <= 0 ? null : categoryIdRaw;
+
+        loading = true;
+        try
+        {
+            var changed = 0;
+            foreach (var id in targets)
+            {
+                var current = accounts.FirstOrDefault(a => a.Id == id);
+                if (current != null && current.CategoryId == categoryId)
+                    continue;
+
+                await AccountManagement.UpdateAccountCategoryAsync(id, categoryId);
+                changed++;
+            }
+
+            await LoadAccounts();
+
+            Snackbar.Add($"分类已更新：{changed}/{targets.Count}", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"修改分类失败：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            loading = false;
+        }
     }
 
     private async Task OpenBatchChangeNickname()

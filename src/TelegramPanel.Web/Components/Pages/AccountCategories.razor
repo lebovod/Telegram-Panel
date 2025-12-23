@@ -53,6 +53,8 @@
                         <MudTd DataLabel="描述">@(context.Description ?? "-")</MudTd>
                         <MudTd DataLabel="账号数量">@context.Accounts.Count</MudTd>
                         <MudTd DataLabel="操作">
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
+                                           OnClick="@(() => EditCategory(context))" />
                             <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
                                            OnClick="@(() => DeleteCategory(context))" />
                         </MudTd>
@@ -256,6 +258,47 @@
             {
                 Snackbar.Add($"删除失败：{ex.Message}", Severity.Error);
             }
+        }
+    }
+
+    private async Task EditCategory(AccountCategory category)
+    {
+        if (category == null)
+            return;
+
+        var parameters = new DialogParameters
+        {
+            ["Category"] = category
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = DialogService.Show<TelegramPanel.Web.Components.Dialogs.AccountCategoryEditDialog>("编辑分类", parameters, options)!;
+        var result = await dialog.Result;
+        if (result is not { Canceled: false })
+            return;
+
+        if (result.Data is not TelegramPanel.Web.Components.Dialogs.AccountCategoryEditModel model)
+            return;
+
+        if (string.IsNullOrWhiteSpace(model.Name))
+        {
+            Snackbar.Add("分类名称不能为空", Severity.Error);
+            return;
+        }
+
+        try
+        {
+            category.Name = model.Name.Trim();
+            category.Color = model.Color;
+            category.Description = model.Description;
+
+            await CategoryManagement.UpdateCategoryAsync(category);
+            await LoadCategories();
+            await LoadAccounts();
+            Snackbar.Add("分类已更新", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"更新失败：{ex.Message}", Severity.Error);
         }
     }
 }
