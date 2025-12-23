@@ -31,24 +31,8 @@
         任务中心
     </MudNavLink>
 
-    <MudNavLink Href="/settings" Icon="@Icons.Material.Filled.Settings">
-        系统设置
-    </MudNavLink>
-
     <MudNavLink Href="/modules" Icon="@Icons.Material.Filled.Extension">
         模块管理
-    </MudNavLink>
-
-    <MudNavLink Href="/apis" Icon="@Icons.Material.Filled.Link">
-        API 管理
-    </MudNavLink>
-
-    <MudNavLink Href="/admin/password" Icon="@Icons.Material.Filled.Password">
-        修改密码
-    </MudNavLink>
-
-    <MudNavLink Href="/logout" Icon="@Icons.Material.Filled.Logout">
-        退出登录
     </MudNavLink>
 
     @if (Contributions.NavItems.Count > 0 || Contributions.Pages.Count > 0)
@@ -76,4 +60,12 @@
             }
         </MudNavGroup>
     }
+
+    <MudNavLink Href="/apis" Icon="@Icons.Material.Filled.Link">
+        API 管理
+    </MudNavLink>
+
+    <MudNavLink Href="/logout" Icon="@Icons.Material.Filled.Logout">
+        退出登录
+    </MudNavLink>
 </MudNavMenu>

@@ -11,6 +11,7 @@
 @inject IDialogService DialogService
 @inject IWebHostEnvironment Environment
 @inject PanelTimeZoneService TimeZone
+@inject NavigationManager Navigation
 @using TelegramPanel.Web.Services
 
 <PageTitle>系统设置 - Telegram Panel</PageTitle>
@@ -124,6 +125,23 @@
                     立即同步
                 </MudButton>
             </MudCardContent>
+        </MudCard>
+
+        <MudCard Class="mb-4">
+            <MudCardHeader>
+                <MudText Typo="Typo.h6">安全</MudText>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudText Typo="Typo.body2">
+                    修改后台登录密码。
+                </MudText>
+            </MudCardContent>
+            <MudCardActions>
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Password"
+                           OnClick="@(async (MouseEventArgs _) => await OpenChangePassword())">
+                    修改密码
+                </MudButton>
+            </MudCardActions>
         </MudCard>
 
         <MudCard Class="mb-4">
@@ -303,6 +321,12 @@
         {
             Snackbar.Add($"保存失败：{ex.Message}（路径：{LocalConfigPath}）", Severity.Error);
         }
+    }
+
+    private Task OpenChangePassword()
+    {
+        Navigation.NavigateTo("/admin/password");
+        return Task.CompletedTask;
     }
 
     private async Task<System.Text.Json.Nodes.JsonObject> LoadOrCreateLocalConfigAsync()
