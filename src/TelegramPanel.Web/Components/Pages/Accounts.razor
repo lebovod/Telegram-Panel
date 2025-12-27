@@ -139,6 +139,7 @@
                         
                         <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" Dense="true">
                              <MudMenuItem Icon="@Icons.Material.Filled.GroupAdd" Disabled="@loading" OnClick="@(() => OpenJoinSubscribe(context))">加群/订阅</MudMenuItem>
+                             <MudMenuItem Icon="@Icons.Material.Filled.Search" Disabled="@loading" OnClick="@(() => OpenSearchJoinSubscribe(context))">搜索订阅</MudMenuItem>
                              <MudMenuItem Icon="@Icons.Material.Filled.ExitToApp" Disabled="@loading" OnClick="@(() => OpenLeaveUnsubscribe(context))">退群/退订</MudMenuItem>
                              <MudMenuItem Icon="@Icons.Material.Filled.MarkEmailUnread" Disabled="@loading" OnClick="@(() => OpenSystemInbox(context))">系统通知（验证码）</MudMenuItem>
                              <MudMenuItem Icon="@Icons.Material.Filled.Devices" Disabled="@loading" OnClick="@(() => OpenDevices(context))">在线设备</MudMenuItem>
@@ -532,6 +533,20 @@
         };
         var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
         DialogService.Show<TelegramPanel.Web.Components.Dialogs.BatchChatMembershipDialog>("加群/订阅", parameters, options);
+        await Task.CompletedTask;
+    }
+
+    private async Task OpenSearchJoinSubscribe(Account account)
+    {
+        if (loading)
+            return;
+
+        var parameters = new DialogParameters
+        {
+            ["AccountId"] = account.Id
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Large, FullWidth = true };
+        DialogService.Show<TelegramPanel.Web.Components.Dialogs.SearchJoinSubscribeDialog>("搜索订阅", parameters, options);
         await Task.CompletedTask;
     }
 

@@ -1,0 +1,328 @@
+@namespace TelegramPanel.Web.Components.Dialogs
+@inject AccountManagementService AccountManagement
+@inject AccountTelegramToolsService TelegramTools
+@inject TelegramPanel.Core.Services.AccountRiskService RiskService
+@inject BatchTaskManagementService TaskManagement
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@using System.Text.Json
+@using TelegramPanel.Core.BatchTasks
+@using TelegramPanel.Core.Models
+@using TelegramPanel.Data.Entities
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="3">
+            @if (account == null)
+            {
+                <MudText Color="Color.Error">账号不存在或已被删除</MudText>
+            }
+            else
+            {
+                <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true">
+                    执行账号：<strong>@account.DisplayPhone</strong> @(string.IsNullOrWhiteSpace(account.Nickname) ? "" : $"（{account.Nickname}）")
+                </MudAlert>
+
+                <MudTextField @bind-Value="searchQuery"
+                              Label="搜索用户名、频道或群组"
+                              Variant="Variant.Outlined"
+                              Placeholder="输入关键词搜索..."
+                              Adornment="Adornment.End"
+                              AdornmentIcon="@Icons.Material.Filled.Search"
+                              OnAdornmentClick="PerformSearch"
+                              OnKeyUp="HandleKeyUp"
+                              Immediate="false"
+                              HelperText="按 Enter 或点击搜索图标进行搜索" />
+
+                @if (searching)
+                {
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.Center" Class="py-4">
+                        <MudProgressCircular Indeterminate="true" Size="Size.Small" />
+                        <MudText>搜索中...</MudText>
+                    </MudStack>
+                }
+                else if (searchResults.Count > 0)
+                {
+                    <MudText Typo="Typo.subtitle2">搜索结果 (@searchResults.Count)</MudText>
+                    
+                    <MudPaper Class="pa-2" Style="max-height: 400px; overflow-y: auto;" Elevation="0" Outlined="true">
+                        <MudList Clickable="true" Dense="true">
+                            @foreach (var result in searchResults)
+                            {
+                                <MudListItem OnClick="@(() => ToggleSelection(result))"
+                                             Style="@(selectedResults.Contains(result) ? "background-color: rgba(33, 150, 243, 0.08);" : "")">
+                                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                        <MudCheckBox T="bool" 
+                                                     Value="@selectedResults.Contains(result)" 
+                                                     ValueChanged="@((bool _) => ToggleSelection(result))"
+                                                     Color="Color.Primary" />
+                                        
+                                        <MudAvatar Color="Color.Primary" Size="Size.Medium">
+                                            @if (result.IsChannel)
+                                            {
+                                                <MudIcon Icon="@Icons.Material.Filled.Campaign" />
+                                            }
+                                            else if (result.IsGroup)
+                                            {
+                                                <MudIcon Icon="@Icons.Material.Filled.Group" />
+                                            }
+                                            else
+                                            {
+                                                <MudIcon Icon="@Icons.Material.Filled.Person" />
+                                            }
+                                        </MudAvatar>
+
+                                        <MudStack Spacing="0" Style="flex: 1;">
+                                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                                <MudText Typo="Typo.body1">
+                                                    <strong>@result.DisplayName</strong>
+                                                </MudText>
+                                                @if (result.IsVerified)
+                                                {
+                                                    <MudIcon Icon="@Icons.Material.Filled.Verified" Size="Size.Small" Color="Color.Info" Title="已验证" />
+                                                }
+                                                @if (result.IsScam)
+                                                {
+                                                    <MudChip T="string" Size="Size.Small" Color="Color.Error">诈骗</MudChip>
+                                                }
+                                                @if (result.IsFake)
+                                                {
+                                                    <MudChip T="string" Size="Size.Small" Color="Color.Warning">假冒</MudChip>
+                                                }
+                                            </MudStack>
+                                            
+                                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                                @if (!string.IsNullOrWhiteSpace(result.Username))
+                                                {
+                                                    <MudText Typo="Typo.body2" Color="Color.Info">@@@result.Username</MudText>
+                                                }
+                                                <MudChip T="string" Size="Size.Small" Variant="Variant.Text">@result.DisplayType</MudChip>
+                                                @if (result.ParticipantsCount.HasValue && result.ParticipantsCount.Value > 0)
+                                                {
+                                                    <MudText Typo="Typo.body2" Color="Color.Default">
+                                                        <MudIcon Icon="@Icons.Material.Filled.People" Size="Size.Small" /> @result.ParticipantsCount.Value.ToString("N0") 人
+                                                    </MudText>
+                                                }
+                                            </MudStack>
+
+                                            @if (!string.IsNullOrWhiteSpace(result.About))
+                                            {
+                                                <MudText Typo="Typo.body2" Color="Color.Default" Class="mt-1" Style="font-size: 0.75rem;">
+                                                    @(result.About.Length > 100 ? result.About.Substring(0, 100) + "..." : result.About)
+                                                </MudText>
+                                            }
+                                        </MudStack>
+                                    </MudStack>
+                                </MudListItem>
+                                <MudDivider />
+                            }
+                        </MudList>
+                    </MudPaper>
+
+                    @if (selectedResults.Count > 0)
+                    {
+                        <MudAlert Severity="Severity.Success" Dense="true">
+                            已选择 <strong>@selectedResults.Count</strong> 个项目
+                        </MudAlert>
+                    }
+
+                    <MudNumericField @bind-Value="delayMs" 
+                                     Label="操作间隔（毫秒）" 
+                                     Variant="Variant.Outlined" 
+                                     Min="0" 
+                                     Max="10000"
+                                     HelperText="建议设置 1500-4000ms，避免触发风控（会额外加少量随机抖动）。" />
+                }
+                else if (hasSearched)
+                {
+                    <MudAlert Severity="Severity.Info">没有找到相关结果，请尝试其他关键词。</MudAlert>
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Normal" Variant="Variant.Text">
+                        <MudText>输入关键词开始搜索频道、群组或用户</MudText>
+                        <MudText Typo="Typo.body2" Class="mt-1">
+                            提示：可以搜索用户名、频道名称、群组名称等
+                        </MudText>
+                    </MudAlert>
+                }
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Text" Color="Color.Default" OnClick="Cancel" Disabled="@submitting">关闭</MudButton>
+        <MudButton Variant="Variant.Filled" 
+                   Color="Color.Primary" 
+                   OnClick="Submit" 
+                   Disabled="@(submitting || account == null || selectedResults.Count == 0)">
+            @if (submitting)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                <span>提交中...</span>
+            }
+            else
+            {
+                <span>订阅选中项 (@selectedResults.Count)</span>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code
+{
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public int AccountId { get; set; }
+
+    private Account? account;
+    private string searchQuery = "";
+    private bool searching;
+    private bool hasSearched;
+    private List<TelegramSearchResult> searchResults = new();
+    private HashSet<TelegramSearchResult> selectedResults = new();
+    private int delayMs = 2000;
+    private bool submitting;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AccountId <= 0)
+            return;
+
+        account = await AccountManagement.GetAccountAsync(AccountId);
+    }
+
+    private async Task HandleKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await PerformSearch();
+        }
+    }
+
+    private async Task PerformSearch()
+    {
+        if (string.IsNullOrWhiteSpace(searchQuery) || searching || account == null)
+            return;
+
+        searching = true;
+        hasSearched = true;
+        searchResults.Clear();
+        selectedResults.Clear();
+
+        try
+        {
+            var (success, error, results) = await TelegramTools.SearchGlobalAsync(
+                account.Id, 
+                searchQuery, 
+                limit: 50);
+
+            if (success)
+            {
+                searchResults = results ?? new List<TelegramSearchResult>();
+                
+                if (searchResults.Count == 0)
+                {
+                    Snackbar.Add("没有找到相关结果", Severity.Info);
+                }
+                else
+                {
+                    Snackbar.Add($"找到 {searchResults.Count} 个结果", Severity.Success);
+                }
+            }
+            else
+            {
+                Snackbar.Add($"搜索失败：{error}", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"搜索出错：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            searching = false;
+        }
+    }
+
+    private void ToggleSelection(TelegramSearchResult result)
+    {
+        if (selectedResults.Contains(result))
+        {
+            selectedResults.Remove(result);
+        }
+        else
+        {
+            selectedResults.Add(result);
+        }
+    }
+
+    private async Task Submit()
+    {
+        if (submitting || account == null || selectedResults.Count == 0)
+            return;
+
+        // 风控检查：加入群/订阅频道是敏感操作
+        var batchCheck = RiskService.CheckBatchAccounts(new List<Account> { account });
+        if (batchCheck.HasRiskyAccounts)
+        {
+            var parameters = new DialogParameters
+            {
+                ["Message"] = $"检测到 {batchCheck.RiskyCount} 个风险账号",
+                ["DetailedMessage"] = batchCheck.GetRiskySummary(),
+                ["ShowRecommendations"] = true,
+                ["ShowExcludeOption"] = false,
+                ["RiskyAccounts"] = batchCheck.RiskyAccounts.ToList()
+            };
+            var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Large };
+            var dialog = DialogService.Show<RiskWarningDialog>("批量操作风控警告", parameters, options);
+            var result = await dialog.Result;
+            if (result.Canceled)
+                return;
+        }
+
+        // 构建订阅链接列表（优先使用用户名）
+        var links = selectedResults
+            .Select(r => r.SubscribeIdentifier)
+            .ToList();
+
+        bool? confirm = await DialogService.ShowMessageBox(
+            "确认执行",
+            $"将使用账号 {account.DisplayPhone} 对 {links.Count} 个项目执行订阅/加群操作。是否继续？",
+            yesText: "继续", cancelText: "取消");
+
+        if (confirm != true)
+            return;
+
+        submitting = true;
+        try
+        {
+            var task = new BatchTask
+            {
+                TaskType = BatchTaskTypes.UserJoinSubscribe,
+                Total = links.Count,
+                Completed = 0,
+                Failed = 0,
+                Config = JsonSerializer.Serialize(new
+                {
+                    AccountIds = new List<int> { account.Id },
+                    Links = links,
+                    DelayMs = delayMs
+                })
+            };
+
+            var created = await TaskManagement.CreateTaskAsync(task);
+            Snackbar.Add($"已提交后台任务 #{created.Id}（订阅/加群）。请到【任务中心】查看进度。", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(created.Id));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"提交失败：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            submitting = false;
+        }
+    }
+
+    private void Cancel() => MudDialog.Close();
+}
+

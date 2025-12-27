@@ -1043,6 +1043,122 @@ public class AccountTelegramToolsService
 
     private sealed record CreateChannelProbeResult(bool Success, bool IsFrozen, string Message);
 
+    /// <summary>
+    /// 全局搜索用户名、频道、群组
+    /// </summary>
+    public async Task<(bool Success, string? Error, List<TelegramSearchResult> Results)> SearchGlobalAsync(
+        int accountId,
+        string query,
+        int limit = 50,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var searchQuery = (query ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(searchQuery))
+                return (false, "搜索关键词为空", new List<TelegramSearchResult>());
+
+            var client = await GetOrCreateConnectedClientAsync(accountId, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // 使用 Contacts_Search 进行全局搜索
+            var contacts = await client.Contacts_Search(q: searchQuery, limit: limit);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var results = new List<TelegramSearchResult>();
+
+            // 处理聊天（频道和群组）
+            foreach (var chat in contacts.chats.Values)
+            {
+                TelegramSearchResult? result = null;
+
+                if (chat is TL.Channel channel)
+                {
+                    result = new TelegramSearchResult(
+                        Id: channel.id,
+                        AccessHash: channel.access_hash,
+                        Type: "Channel",
+                        Title: channel.title,
+                        Username: channel.username,
+                        FirstName: null,
+                        LastName: null,
+                        About: channel.about,
+                        ParticipantsCount: channel.participants_count,
+                        IsChannel: channel.IsChannel,
+                        IsGroup: channel.IsGroup,
+                        IsUser: false,
+                        IsVerified: channel.flags.HasFlag(TL.Channel.Flags.verified),
+                        IsScam: channel.flags.HasFlag(TL.Channel.Flags.scam),
+                        IsFake: channel.flags.HasFlag(TL.Channel.Flags.fake),
+                        PhotoUrl: null
+                    );
+                }
+                else if (chat is TL.Chat chatObj)
+                {
+                    result = new TelegramSearchResult(
+                        Id: chatObj.id,
+                        AccessHash: null,
+                        Type: "Chat",
+                        Title: chatObj.title,
+                        Username: null,
+                        FirstName: null,
+                        LastName: null,
+                        About: null,
+                        ParticipantsCount: chatObj.participants_count,
+                        IsChannel: false,
+                        IsGroup: true,
+                        IsUser: false,
+                        IsVerified: false,
+                        IsScam: false,
+                        IsFake: false,
+                        PhotoUrl: null
+                    );
+                }
+
+                if (result != null)
+                    results.Add(result);
+            }
+
+            // 处理用户
+            foreach (var user in contacts.users.Values)
+            {
+                if (user is TL.User u)
+                {
+                    var result = new TelegramSearchResult(
+                        Id: u.id,
+                        AccessHash: u.access_hash,
+                        Type: "User",
+                        Title: null,
+                        Username: u.username,
+                        FirstName: u.first_name,
+                        LastName: u.last_name,
+                        About: u.status?.ToString(),
+                        ParticipantsCount: null,
+                        IsChannel: false,
+                        IsGroup: false,
+                        IsUser: true,
+                        IsVerified: u.flags.HasFlag(TL.User.Flags.verified),
+                        IsScam: u.flags.HasFlag(TL.User.Flags.scam),
+                        IsFake: u.flags.HasFlag(TL.User.Flags.fake),
+                        PhotoUrl: null
+                    );
+
+                    results.Add(result);
+                }
+            }
+
+            _logger.LogInformation("全局搜索 '{Query}' 找到 {Count} 个结果", searchQuery, results.Count);
+            return (true, null, results);
+        }
+        catch (Exception ex)
+        {
+            var (summary, details) = MapTelegramException(ex);
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}：{details}";
+            _logger.LogError(ex, "全局搜索失败：{Message}", msg);
+            return (false, msg, new List<TelegramSearchResult>());
+        }
+    }
+
     private static (string summary, string details) MapTelegramException(Exception ex)
     {
         var msg = ex.Message ?? string.Empty;
