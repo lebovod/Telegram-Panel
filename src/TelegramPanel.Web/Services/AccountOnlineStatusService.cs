@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using TelegramPanel.Core.Interfaces;
 using TelegramPanel.Core.Services;
+using TelegramPanel.Core.Services.Telegram;
 using TL;
 
 namespace TelegramPanel.Web.Services;
@@ -41,9 +42,9 @@ public class AccountOnlineStatusService : BackgroundService
             return;
         }
 
-        // 获取更新间隔（秒）- 改为秒级控制，默认90秒
-        var intervalSeconds = _configuration.GetValue("OnlineStatus:UpdateIntervalSeconds", 90);
-        if (intervalSeconds < 30) intervalSeconds = 30;
+        // 获取更新间隔（秒）- 改为秒级控制，默认30秒以更频繁地保持在线
+        var intervalSeconds = _configuration.GetValue("OnlineStatus:UpdateIntervalSeconds", 30);
+        if (intervalSeconds < 20) intervalSeconds = 20;  // 最小20秒
         if (intervalSeconds > 600) intervalSeconds = 600;
 
         // 延迟启动，等待应用初始化完成
@@ -123,7 +124,7 @@ public class AccountOnlineStatusService : BackgroundService
 
                 if (apiId <= 0 || string.IsNullOrWhiteSpace(apiHash))
                 {
-                    _logger.LogDebug("账号 {AccountId} ({Phone}) 缺少 ApiId/ApiHash，跳过初始化", 
+                    _logger.LogWarning("账号 {AccountId} ({Phone}) 缺少 ApiId/ApiHash，跳过初始化", 
                         account.Id, account.DisplayPhone);
                     continue;
                 }
@@ -133,8 +134,8 @@ public class AccountOnlineStatusService : BackgroundService
 
                 if (!File.Exists(absoluteSessionPath))
                 {
-                    _logger.LogDebug("账号 {AccountId} ({Phone}) 的 session 文件不存在，跳过初始化", 
-                        account.Id, account.DisplayPhone);
+                    _logger.LogWarning("账号 {AccountId} ({Phone}) 的 session 文件不存在：{Path}", 
+                        account.Id, account.DisplayPhone, absoluteSessionPath);
                     continue;
                 }
 
@@ -147,17 +148,28 @@ public class AccountOnlineStatusService : BackgroundService
                     phoneNumber: account.Phone,
                     userId: account.UserId > 0 ? account.UserId : null);
 
+                // 确保客户端完全连接
+                await client.ConnectAsync();
+                if (client.User == null && (client.UserId != 0 || account.UserId != 0))
+                {
+                    await client.LoginUserIfNeeded(reloginOnFailedResume: false);
+                }
+
                 if (client?.User != null)
                 {
-                    // 执行一次轻量级操作确认连接并触发 Updates 流
-                    await client.Users_GetUsers(InputUser.Self);
+                    // 1. 主动设置在线状态
+                    await client.Account_UpdateStatus(offline: false);
                     
-                    // 触发 Updates 接收（对于 WTelegram，这会让客户端开始接收 Updates）
-                    // 这是显示在线状态的关键
+                    // 2. 触发 Updates 接收 - 保持连接活跃
                     await client.Updates_GetState();
                     
                     successCount++;
-                    _logger.LogInformation("账号 {AccountId} ({Phone}) 连接已建立并开始接收 Updates", 
+                    _logger.LogInformation("账号 {AccountId} ({Phone}) 已设置为在线状态", 
+                        account.Id, account.DisplayPhone);
+                }
+                else
+                {
+                    _logger.LogWarning("账号 {AccountId} ({Phone}) 客户端连接失败：User 为 null", 
                         account.Id, account.DisplayPhone);
                 }
 
@@ -167,7 +179,7 @@ public class AccountOnlineStatusService : BackgroundService
             catch (Exception ex)
             {
                 failCount++;
-                _logger.LogDebug(ex, "初始化账号 {AccountId} ({Phone}) 连接失败", 
+                _logger.LogWarning(ex, "初始化账号 {AccountId} ({Phone}) 连接失败", 
                     account.Id, account.DisplayPhone);
             }
         }
@@ -182,7 +194,7 @@ public class AccountOnlineStatusService : BackgroundService
 
         // 获取所有活跃账号
         var accounts = await accountManagement.GetAllAccountsAsync();
-        var activeAccounts = accounts.Where(a => a.IsActive).ToList();
+        var activeAccounts = accounts.Where(a => a.IsActive && !string.IsNullOrWhiteSpace(a.SessionPath)).ToList();
 
         if (activeAccounts.Count == 0)
         {
@@ -201,23 +213,27 @@ public class AccountOnlineStatusService : BackgroundService
 
             try
             {
-                // 检查客户端是否已连接
+                // 先检查客户端是否已存在并已连接
                 var client = _clientPool.GetClient(account.Id);
-                if (client == null || client.User == null)
+                if (client != null && client.User != null)
                 {
-                    // 如果客户端不存在或未登录，跳过
-                    skippedCount++;
-                    continue;
+                    // 客户端已连接，直接维护在线状态
+                    // 1. 主动发送在线状态
+                    await client.Account_UpdateStatus(offline: false);
+                    
+                    // 2. 保持 Updates 流活跃
+                    await client.Updates_GetState();
+                    
+                    successCount++;
+                    _logger.LogTrace("账号 {AccountId} ({Phone}) 连接保持活跃", 
+                        account.Id, account.DisplayPhone);
                 }
-
-                // 通过执行轻量级操作保持连接活跃
-                // 定期调用 Updates_GetState 可以确保客户端持续接收 Updates
-                // 这是保持在线状态的关键
-                await client.Updates_GetState();
-                successCount++;
-
-                _logger.LogTrace("账号 {AccountId} ({Phone}) 连接保持活跃", 
-                    account.Id, account.DisplayPhone);
+                else
+                {
+                    // 客户端不存在或未连接，跳过
+                    // （初始化会在 InitializeActiveAccountConnectionsAsync 中处理）
+                    skippedCount++;
+                }
 
                 // 避免频繁请求，添加小延迟
                 await Task.Delay(100, cancellationToken);
