@@ -51,6 +51,7 @@
     <MudMenu Label="批量操作" Variant="Variant.Outlined" Color="Color.Default" StartIcon="@Icons.Material.Filled.MoreHoriz" 
              Size="Size.Small" Disabled="@loading" Dense="true" EndIcon="@Icons.Material.Filled.KeyboardArrowDown">
         <MudMenuItem Disabled="@(selectedAccounts.Count == 0)" OnClick="OpenBatchJoinSubscribe">批量加群/订阅（已选）</MudMenuItem>
+        <MudMenuItem Disabled="@(selectedAccounts.Count == 0)" OnClick="OpenBatchSearchJoinSubscribe">批量搜索订阅（已选）</MudMenuItem>
         <MudMenuItem Disabled="@(selectedAccounts.Count == 0)" OnClick="OpenBatchLeaveUnsubscribe">批量退群/退订（已选）</MudMenuItem>
         <MudMenuItem Disabled="@(selectedAccounts.Count == 0)" OnClick="OpenBatchChangeTwoFactorPassword">修改二级密码（已选）</MudMenuItem>
         <MudMenuItem Disabled="@(selectedAccounts.Count == 0)" OnClick="BatchKickAllOtherDevices">批量踢出所有其他设备（已选）</MudMenuItem>
@@ -496,6 +497,27 @@
         };
         var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
         DialogService.Show<TelegramPanel.Web.Components.Dialogs.BatchChatMembershipDialog>("批量加群/订阅", parameters, options);
+        await Task.CompletedTask;
+    }
+
+    private async Task OpenBatchSearchJoinSubscribe()
+    {
+        if (loading)
+            return;
+
+        var ids = selectedAccounts.Select(a => a.Id).Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            Snackbar.Add("请先选择账号", Severity.Info);
+            return;
+        }
+
+        var parameters = new DialogParameters
+        {
+            ["AccountIds"] = ids
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        DialogService.Show<TelegramPanel.Web.Components.Dialogs.BatchSearchJoinSubscribeDialog>("批量搜索订阅", parameters, options);
         await Task.CompletedTask;
     }
 
