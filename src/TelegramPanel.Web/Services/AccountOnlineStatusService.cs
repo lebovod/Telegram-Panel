@@ -149,10 +149,15 @@ public class AccountOnlineStatusService : BackgroundService
 
                 if (client?.User != null)
                 {
-                    // 执行一次轻量级操作确认连接
+                    // 执行一次轻量级操作确认连接并触发 Updates 流
                     await client.Users_GetUsers(InputUser.Self);
+                    
+                    // 触发 Updates 接收（对于 WTelegram，这会让客户端开始接收 Updates）
+                    // 这是显示在线状态的关键
+                    await client.Updates_GetState();
+                    
                     successCount++;
-                    _logger.LogInformation("账号 {AccountId} ({Phone}) 连接已建立", 
+                    _logger.LogInformation("账号 {AccountId} ({Phone}) 连接已建立并开始接收 Updates", 
                         account.Id, account.DisplayPhone);
                 }
 
@@ -205,9 +210,10 @@ public class AccountOnlineStatusService : BackgroundService
                     continue;
                 }
 
-                // 通过执行轻量级操作保持连接活跃（获取自己的信息）
-                // 这会让 Telegram 认为客户端是活跃的，从而显示在线状态
-                await client.Users_GetUsers(InputUser.Self);
+                // 通过执行轻量级操作保持连接活跃
+                // 定期调用 Updates_GetState 可以确保客户端持续接收 Updates
+                // 这是保持在线状态的关键
+                await client.Updates_GetState();
                 successCount++;
 
                 _logger.LogTrace("账号 {AccountId} ({Phone}) 连接保持活跃", 

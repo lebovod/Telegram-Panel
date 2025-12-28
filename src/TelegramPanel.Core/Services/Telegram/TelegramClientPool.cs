@@ -96,10 +96,18 @@ public class TelegramClientPool : ITelegramClientPool, IDisposable
             var client = new Client(Config);
             TryRebindApiIdForLoadedSession(client, apiId);
 
-            // 设置日志回调
-            client.OnOther += (update) =>
+            // 设置 Update 处理器 - 这是保持在线状态的关键！
+            // Telegram 只有在客户端持续接收 Updates 时才会显示在线
+            client.OnUpdate += async (update) =>
             {
-                _logger.LogDebug("Account {AccountId} received update: {Update}", accountId, update.GetType().Name);
+                _logger.LogTrace("Account {AccountId} received update: {UpdateType}", accountId, update?.GetType().Name ?? "null");
+                await Task.CompletedTask;
+            };
+
+            // 设置其他事件回调
+            client.OnOther += (other) =>
+            {
+                _logger.LogTrace("Account {AccountId} received other event: {EventType}", accountId, other?.GetType().Name ?? "null");
                 return Task.CompletedTask;
             };
 
