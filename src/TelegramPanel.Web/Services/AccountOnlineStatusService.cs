@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using TelegramPanel.Core.Interfaces;
 using TelegramPanel.Core.Services;
+using TL;
 
 namespace TelegramPanel.Web.Services;
 
@@ -40,15 +41,25 @@ public class AccountOnlineStatusService : BackgroundService
             return;
         }
 
-        // 获取更新间隔（分钟）
-        var intervalMinutes = _configuration.GetValue("OnlineStatus:UpdateIntervalMinutes", 5);
-        if (intervalMinutes < 1) intervalMinutes = 1;
-        if (intervalMinutes > 60) intervalMinutes = 60;
+        // 获取更新间隔（秒）- 改为秒级控制，默认90秒
+        var intervalSeconds = _configuration.GetValue("OnlineStatus:UpdateIntervalSeconds", 90);
+        if (intervalSeconds < 30) intervalSeconds = 30;
+        if (intervalSeconds > 600) intervalSeconds = 600;
 
         // 延迟启动，等待应用初始化完成
-        await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
+        await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken);
 
-        _logger.LogInformation("账号在线状态维护服务已启动，更新间隔：{Interval} 分钟", intervalMinutes);
+        _logger.LogInformation("账号在线状态维护服务已启动，更新间隔：{Interval} 秒", intervalSeconds);
+
+        // 首次运行时初始化所有活跃账号的连接
+        try
+        {
+            await InitializeActiveAccountConnectionsAsync(stoppingToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "初始化账号连接时出错");
+        }
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -66,10 +77,97 @@ public class AccountOnlineStatusService : BackgroundService
             }
 
             // 根据配置的间隔更新
-            await Task.Delay(TimeSpan.FromMinutes(intervalMinutes), stoppingToken);
+            await Task.Delay(TimeSpan.FromSeconds(intervalSeconds), stoppingToken);
         }
 
         _logger.LogInformation("账号在线状态维护服务已停止");
+    }
+
+    /// <summary>
+    /// 初始化所有活跃账号的连接
+    /// </summary>
+    private async Task InitializeActiveAccountConnectionsAsync(CancellationToken cancellationToken)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var accountManagement = scope.ServiceProvider.GetRequiredService<AccountManagementService>();
+
+        var accounts = await accountManagement.GetAllAccountsAsync();
+        var activeAccounts = accounts.Where(a => a.IsActive && !string.IsNullOrWhiteSpace(a.SessionPath)).ToList();
+
+        if (activeAccounts.Count == 0)
+        {
+            _logger.LogInformation("没有需要初始化的活跃账号");
+            return;
+        }
+
+        _logger.LogInformation("开始初始化 {Count} 个活跃账号的连接", activeAccounts.Count);
+
+        var successCount = 0;
+        var failCount = 0;
+
+        foreach (var account in activeAccounts)
+        {
+            if (cancellationToken.IsCancellationRequested)
+                break;
+
+            try
+            {
+                // 尝试获取或创建客户端连接
+                var apiId = int.TryParse(_configuration["Telegram:ApiId"], out var globalApiId) && globalApiId > 0
+                    ? globalApiId
+                    : (account.ApiId > 0 ? account.ApiId : 0);
+
+                var apiHash = !string.IsNullOrWhiteSpace(_configuration["Telegram:ApiHash"])
+                    ? _configuration["Telegram:ApiHash"]!.Trim()
+                    : (!string.IsNullOrWhiteSpace(account.ApiHash) ? account.ApiHash.Trim() : null);
+
+                if (apiId <= 0 || string.IsNullOrWhiteSpace(apiHash))
+                {
+                    _logger.LogDebug("账号 {AccountId} ({Phone}) 缺少 ApiId/ApiHash，跳过初始化", 
+                        account.Id, account.DisplayPhone);
+                    continue;
+                }
+
+                var sessionKey = !string.IsNullOrWhiteSpace(account.ApiHash) ? account.ApiHash.Trim() : apiHash;
+                var absoluteSessionPath = Path.GetFullPath(account.SessionPath);
+
+                if (!File.Exists(absoluteSessionPath))
+                {
+                    _logger.LogDebug("账号 {AccountId} ({Phone}) 的 session 文件不存在，跳过初始化", 
+                        account.Id, account.DisplayPhone);
+                    continue;
+                }
+
+                var client = await _clientPool.GetOrCreateClientAsync(
+                    accountId: account.Id,
+                    apiId: apiId,
+                    apiHash: apiHash,
+                    sessionPath: account.SessionPath,
+                    sessionKey: sessionKey,
+                    phoneNumber: account.Phone,
+                    userId: account.UserId > 0 ? account.UserId : null);
+
+                if (client?.User != null)
+                {
+                    // 执行一次轻量级操作确认连接
+                    await client.Users_GetUsers(InputUser.Self);
+                    successCount++;
+                    _logger.LogInformation("账号 {AccountId} ({Phone}) 连接已建立", 
+                        account.Id, account.DisplayPhone);
+                }
+
+                // 避免频繁请求
+                await Task.Delay(500, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                failCount++;
+                _logger.LogDebug(ex, "初始化账号 {AccountId} ({Phone}) 连接失败", 
+                    account.Id, account.DisplayPhone);
+            }
+        }
+
+        _logger.LogInformation("账号连接初始化完成：成功 {Success}，失败 {Fail}", successCount, failCount);
     }
 
     private async Task UpdateOnlineStatusForAllAccountsAsync(CancellationToken cancellationToken)
@@ -87,10 +185,9 @@ public class AccountOnlineStatusService : BackgroundService
             return;
         }
 
-        _logger.LogInformation("开始更新 {Count} 个账号的在线状态", activeAccounts.Count);
-
         var successCount = 0;
         var failCount = 0;
+        var skippedCount = 0;
 
         foreach (var account in activeAccounts)
         {
@@ -104,14 +201,16 @@ public class AccountOnlineStatusService : BackgroundService
                 if (client == null || client.User == null)
                 {
                     // 如果客户端不存在或未登录，跳过
+                    skippedCount++;
                     continue;
                 }
 
-                // 发送在线状态更新
-                await client.Account_UpdateStatus(offline: false);
+                // 通过执行轻量级操作保持连接活跃（获取自己的信息）
+                // 这会让 Telegram 认为客户端是活跃的，从而显示在线状态
+                await client.Users_GetUsers(InputUser.Self);
                 successCount++;
 
-                _logger.LogTrace("账号 {AccountId} ({Phone}) 在线状态已更新", 
+                _logger.LogTrace("账号 {AccountId} ({Phone}) 连接保持活跃", 
                     account.Id, account.DisplayPhone);
 
                 // 避免频繁请求，添加小延迟
@@ -127,8 +226,8 @@ public class AccountOnlineStatusService : BackgroundService
 
         if (successCount > 0 || failCount > 0)
         {
-            _logger.LogInformation("在线状态更新完成：成功 {Success}，失败 {Fail}", 
-                successCount, failCount);
+            _logger.LogInformation("在线状态维护：保持活跃 {Success}，跳过 {Skipped}，失败 {Fail}", 
+                successCount, skippedCount, failCount);
         }
     }
 }
