@@ -326,6 +326,7 @@ builder.Services.AddSingleton<UpdateCheckService>();
 builder.Services.Configure<PanelTimeZoneOptions>(builder.Configuration.GetSection("System"));
 builder.Services.AddSingleton<PanelTimeZoneService>();
 builder.Services.AddHostedService<BatchTaskBackgroundService>();
+builder.Services.AddHostedService<AccountOnlineStatusService>();
 builder.Services.AddHostedService<AccountDataAutoSyncBackgroundService>();
 builder.Services.AddHostedService<BotAutoSyncBackgroundService>();
 builder.Services.AddHttpClient<TelegramBotApiClient>();
