@@ -1065,15 +1065,30 @@ public class AccountTelegramToolsService
             var contacts = await client.Contacts_Search(q: searchQuery, limit: limit);
             cancellationToken.ThrowIfCancellationRequested();
 
+            // 获取当前用户已加入的对话列表（用于过滤）
+            var dialogs = await client.Messages_GetAllDialogs();
+            var myDialogIds = new HashSet<long>();
+            foreach (var chat in dialogs.chats.Values)
+            {
+                if (chat is TL.Channel c)
+                    myDialogIds.Add(c.id);
+                else if (chat is TL.Chat ch)
+                    myDialogIds.Add(ch.id);
+            }
+
             var results = new List<TelegramSearchResult>();
 
-            // 处理聊天（频道和群组）
+            // 处理聊天（频道和群组） - 只添加未加入的
             foreach (var chat in contacts.chats.Values)
             {
                 TelegramSearchResult? result = null;
 
                 if (chat is TL.Channel channel)
                 {
+                    // 过滤掉已加入的频道/群组
+                    if (myDialogIds.Contains(channel.id))
+                        continue;
+
                     result = new TelegramSearchResult(
                         Id: channel.id,
                         AccessHash: channel.access_hash,
@@ -1082,7 +1097,7 @@ public class AccountTelegramToolsService
                         Username: channel.username,
                         FirstName: null,
                         LastName: null,
-                        About: channel.about,
+                        About: null,
                         ParticipantsCount: channel.participants_count,
                         IsChannel: channel.IsChannel,
                         IsGroup: channel.IsGroup,
@@ -1095,6 +1110,10 @@ public class AccountTelegramToolsService
                 }
                 else if (chat is TL.Chat chatObj)
                 {
+                    // 过滤掉已加入的群组
+                    if (myDialogIds.Contains(chatObj.id))
+                        continue;
+
                     result = new TelegramSearchResult(
                         Id: chatObj.id,
                         AccessHash: null,
@@ -1119,7 +1138,7 @@ public class AccountTelegramToolsService
                     results.Add(result);
             }
 
-            // 处理用户
+            // 处理用户 - 用户不需要过滤
             foreach (var user in contacts.users.Values)
             {
                 if (user is TL.User u)

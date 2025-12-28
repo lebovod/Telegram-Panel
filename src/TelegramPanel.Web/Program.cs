@@ -317,6 +317,10 @@ builder.Services.AddScoped<AccountExportService>();
 builder.Services.AddScoped<DataSyncService>();
 builder.Services.AddScoped<UiPreferencesService>();
 builder.Services.AddScoped<BotAdminPresetsService>();
+
+// 注册任务处理器
+builder.Services.AddScoped<TelegramPanel.Modules.IModuleTaskHandler, UserJoinSubscribeTaskHandler>();
+
 builder.Services.Configure<UpdateCheckOptions>(builder.Configuration.GetSection("UpdateCheck"));
 builder.Services.AddSingleton<UpdateCheckService>();
 builder.Services.Configure<PanelTimeZoneOptions>(builder.Configuration.GetSection("System"));

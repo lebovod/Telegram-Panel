@@ -1,6 +1,6 @@
 @namespace TelegramPanel.Web.Components.Dialogs
 @inject AccountManagementService AccountManagement
-@inject AccountTelegramToolsService TelegramTools
+@inject TelegramPanel.Core.Services.Telegram.AccountTelegramToolsService TelegramTools
 @inject TelegramPanel.Core.Services.AccountRiskService RiskService
 @inject BatchTaskManagementService TaskManagement
 @inject ISnackbar Snackbar
@@ -46,11 +46,12 @@
                     <MudText Typo="Typo.subtitle2">搜索结果 (@searchResults.Count)</MudText>
                     
                     <MudPaper Class="pa-2" Style="max-height: 400px; overflow-y: auto;" Elevation="0" Outlined="true">
-                        <MudList Clickable="true" Dense="true">
+                        <MudStack Spacing="0">
                             @foreach (var result in searchResults)
                             {
-                                <MudListItem OnClick="@(() => ToggleSelection(result))"
-                                             Style="@(selectedResults.Contains(result) ? "background-color: rgba(33, 150, 243, 0.08);" : "")">
+                                <MudPaper Class="pa-2 mb-1" Elevation="0" 
+                                          Style="@(selectedResults.Contains(result) ? "background-color: rgba(33, 150, 243, 0.08); cursor: pointer;" : "cursor: pointer;")"
+                                          @onclick="@(() => ToggleSelection(result))">
                                     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
                                         <MudCheckBox T="bool" 
                                                      Value="@selectedResults.Contains(result)" 
@@ -113,10 +114,9 @@
                                             }
                                         </MudStack>
                                     </MudStack>
-                                </MudListItem>
-                                <MudDivider />
+                                </MudPaper>
                             }
-                        </MudList>
+                        </MudStack>
                     </MudPaper>
 
                     @if (selectedResults.Count > 0)
