@@ -819,12 +819,11 @@ public class ChannelForwardMonitorService : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "copyMessage失败，尝试使用forwardMessage - 源: {From}, 目标: {To}, 消息ID: {MsgId}",
+            _logger.LogWarning(ex, "copyMessage失败（可能是特殊消息类型如礼物/投票等无法复制），跳过该消息 - 源: {From}, 目标: {To}, 消息ID: {MsgId}",
                 fromChatId, toChatId, messageId);
             
-            // 如果copyMessage失败，回退到forwardMessage
-            parameters.Remove("caption");
-            await botApi.CallAsync(botToken, "forwardMessage", parameters, cancellationToken);
+            // 不使用 forwardMessage 回退，直接抛出异常让调用方处理（增加 SkippedCount）
+            throw;
         }
     }
 
