@@ -486,6 +486,98 @@ using (var scope = app.Services.CreateScope())
             Log.Warning("Pending migrations not applied: {Migrations}", string.Join(", ", pendingMigrations));
         }
         
+        // 手动创建 Bots 相关表（如果不存在）
+        if (!tables.Contains("Bots", StringComparer.Ordinal))
+        {
+            Log.Warning("Bots table missing, creating manually...");
+            try
+            {
+                using var createCmd = conn.CreateCommand();
+                createCmd.CommandText = @"
+                    CREATE TABLE IF NOT EXISTS Bots (
+                        Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        Name TEXT NOT NULL,
+                        Token TEXT NOT NULL,
+                        Username TEXT,
+                        IsActive INTEGER NOT NULL,
+                        CreatedAt TEXT NOT NULL,
+                        LastSyncAt TEXT,
+                        LastUpdateId INTEGER
+                    );
+                    CREATE UNIQUE INDEX IF NOT EXISTS IX_Bots_Name ON Bots(Name);
+                    CREATE INDEX IF NOT EXISTS IX_Bots_Username ON Bots(Username);
+                ";
+                createCmd.ExecuteNonQuery();
+                Log.Information("Bots table created successfully");
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to create Bots table manually");
+            }
+        }
+        
+        if (!tables.Contains("BotChannelCategories", StringComparer.Ordinal))
+        {
+            Log.Warning("BotChannelCategories table missing, creating manually...");
+            try
+            {
+                using var createCmd = conn.CreateCommand();
+                createCmd.CommandText = @"
+                    CREATE TABLE IF NOT EXISTS BotChannelCategories (
+                        Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        BotId INTEGER NOT NULL,
+                        Name TEXT NOT NULL,
+                        Description TEXT,
+                        CreatedAt TEXT NOT NULL,
+                        FOREIGN KEY (BotId) REFERENCES Bots(Id) ON DELETE CASCADE
+                    );
+                    CREATE UNIQUE INDEX IF NOT EXISTS IX_BotChannelCategories_BotId_Name ON BotChannelCategories(BotId, Name);
+                ";
+                createCmd.ExecuteNonQuery();
+                Log.Information("BotChannelCategories table created successfully");
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to create BotChannelCategories table manually");
+            }
+        }
+        
+        if (!tables.Contains("BotChannels", StringComparer.Ordinal))
+        {
+            Log.Warning("BotChannels table missing, creating manually...");
+            try
+            {
+                using var createCmd = conn.CreateCommand();
+                createCmd.CommandText = @"
+                    CREATE TABLE IF NOT EXISTS BotChannels (
+                        Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        BotId INTEGER NOT NULL,
+                        TelegramId INTEGER NOT NULL,
+                        AccessHash INTEGER,
+                        Title TEXT NOT NULL,
+                        Username TEXT,
+                        IsBroadcast INTEGER NOT NULL,
+                        MemberCount INTEGER NOT NULL,
+                        About TEXT,
+                        CreatedAt TEXT,
+                        SyncedAt TEXT NOT NULL,
+                        CategoryId INTEGER,
+                        FOREIGN KEY (BotId) REFERENCES Bots(Id) ON DELETE CASCADE,
+                        FOREIGN KEY (CategoryId) REFERENCES BotChannelCategories(Id) ON DELETE SET NULL
+                    );
+                    CREATE UNIQUE INDEX IF NOT EXISTS IX_BotChannels_BotId_TelegramId ON BotChannels(BotId, TelegramId);
+                    CREATE INDEX IF NOT EXISTS IX_BotChannels_CategoryId ON BotChannels(CategoryId);
+                    CREATE INDEX IF NOT EXISTS IX_BotChannels_Username ON BotChannels(Username);
+                ";
+                createCmd.ExecuteNonQuery();
+                Log.Information("BotChannels table created successfully");
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to create BotChannels table manually");
+            }
+        }
+        
         // 手动创建 ChannelForwardRules 表（如果不存在）
         if (!tables.Contains("ChannelForwardRules", StringComparer.Ordinal))
         {
@@ -514,6 +606,7 @@ using (var scope = app.Services.CreateScope())
                         SkippedCount INTEGER NOT NULL,
                         CreatedAt TEXT NOT NULL,
                         UpdatedAt TEXT NOT NULL,
+                        TargetChannelsConfig TEXT,
                         FOREIGN KEY (BotId) REFERENCES Bots(Id) ON DELETE CASCADE
                     );
                     
@@ -528,6 +621,25 @@ using (var scope = app.Services.CreateScope())
             {
                 Log.Error(ex, "Failed to create ChannelForwardRules table manually");
             }
+        }
+        
+        // 刷新表列表（可能刚创建了新表）
+        tables.Clear();
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;";
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                var name = reader.GetString(0);
+                tables.Add(name);
+            }
+        }
+        
+        // 确保 Bots 表有 LastUpdateId 列（后来添加的）
+        if (tables.Contains("Bots", StringComparer.Ordinal))
+        {
+            EnsureSqliteColumn(conn, tableName: "Bots", columnName: "LastUpdateId", columnType: "INTEGER");
         }
         
         // 确保 ChannelForwardRules 表有 TargetChannelsConfig 列
