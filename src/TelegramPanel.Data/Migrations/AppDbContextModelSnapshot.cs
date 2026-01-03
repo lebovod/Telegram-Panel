@@ -171,6 +171,40 @@ namespace TelegramPanel.Data.Migrations
                     b.ToTable("BatchTasks");
                 });
 
+            modelBuilder.Entity("TelegramPanel.Data.Entities.Bot", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("LastSyncAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("LastUpdateId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Token")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Username")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Bots");
+                });
+
             modelBuilder.Entity("TelegramPanel.Data.Entities.Channel", b =>
                 {
                     b.Property<int>("Id")
@@ -226,6 +260,78 @@ namespace TelegramPanel.Data.Migrations
                     b.HasIndex("Username");
 
                     b.ToTable("Channels");
+                });
+
+            modelBuilder.Entity("TelegramPanel.Data.Entities.ChannelForwardRule", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("BotId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DeleteAfterKeywords")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("DeleteLinks")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("DeleteMentions")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("DeletePatterns")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FooterTemplate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ForwardedCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("LastProcessedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("LastProcessedMessageId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SkippedCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("SourceChannelId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("SourceChannelTitle")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SourceChannelUsername")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TargetChannelIds")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TargetChannelsConfig")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BotId");
+
+                    b.ToTable("ChannelForwardRules");
                 });
 
             modelBuilder.Entity("TelegramPanel.Data.Entities.ChannelGroup", b =>
@@ -329,6 +435,17 @@ namespace TelegramPanel.Data.Migrations
                     b.Navigation("CreatorAccount");
 
                     b.Navigation("Group");
+                });
+
+            modelBuilder.Entity("TelegramPanel.Data.Entities.ChannelForwardRule", b =>
+                {
+                    b.HasOne("TelegramPanel.Data.Entities.Bot", "Bot")
+                        .WithMany()
+                        .HasForeignKey("BotId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Bot");
                 });
 
             modelBuilder.Entity("TelegramPanel.Data.Entities.Group", b =>

@@ -1,0 +1,495 @@
+@using TelegramPanel.Core.Services
+@using TelegramPanel.Data.Entities
+@inject ChannelForwardManagementService ForwardRuleService
+@inject BotManagementService BotService
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudTextField @bind-Value="model.Name"
+                          Label="规则名称"
+                          Variant="Variant.Outlined"
+                          Required="true"
+                          HelperText="给这条转发规则起个名字" />
+
+            <MudSelect Value="@model.BotId"
+                       Label="使用的机器人"
+                       Variant="Variant.Outlined"
+                       Required="true"
+                       HelperText="选择用于转发的机器人"
+                       ValueChanged="@((int value) => OnBotChanged(value))">
+                @foreach (var bot in bots)
+                {
+                    <MudSelectItem Value="@bot.Id">@bot.Name (@bot.Username)</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudSelect T="long"
+                       @bind-Value="selectedSourceChannelId"
+                       Label="源频道"
+                       Variant="Variant.Outlined"
+                       Required="true"
+                       Disabled="@(botChannels.Count == 0)"
+                       HelperText="选择要监听的频道（机器人必须是该频道的管理员）">
+                @if (botChannels.Count == 0)
+                {
+                    <MudSelectItem T="long" Value="0L" Disabled="true">请先选择机器人并同步频道</MudSelectItem>
+                }
+                else
+                {
+                    @foreach (var channel in botChannels)
+                    {
+                        <MudSelectItem T="long" Value="@channel.TelegramId">
+                            @channel.Title @(!string.IsNullOrEmpty(channel.Username) ? $"(@{channel.Username})" : "")
+                        </MudSelectItem>
+                    }
+                }
+            </MudSelect>
+
+            <MudSelect T="long"
+                       Label="目标频道"
+                       Variant="Variant.Outlined"
+                       Required="true"
+                       MultiSelection="true"
+                       Disabled="@(botChannels.Count == 0)"
+                       SelectedValues="@selectedTargetChannelIds"
+                       SelectedValuesChanged="@OnTargetChannelsChanged"
+                       HelperText="选择要转发到的频道（可多选，机器人必须是管理员）">
+                @if (botChannels.Count == 0)
+                {
+                    <MudSelectItem T="long" Value="0L" Disabled="true">请先选择机器人并同步频道</MudSelectItem>
+                }
+                else
+                {
+                    @foreach (var channel in botChannels)
+                    {
+                        <MudSelectItem T="long" Value="@channel.TelegramId">
+                            @channel.Title @(!string.IsNullOrEmpty(channel.Username) ? $"(@{channel.Username})" : "")
+                        </MudSelectItem>
+                    }
+                }
+            </MudSelect>
+
+            @if (!isLoading && selectedTargetChannelIds.Any())
+            {
+                <MudDivider />
+                <MudText Typo="Typo.subtitle2" Class="mt-4">频道页脚设置</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">为每个目标频道设置独立的页脚内容（支持 Markdown）</MudText>
+
+                @foreach (var channelId in selectedTargetChannelIds.OrderBy(x => x))
+                {
+                    var channel = botChannels.FirstOrDefault(c => c.TelegramId == channelId);
+                    if (channel != null)
+                    {
+                        // 确保字典中有这个键
+                        var footerValue = GetChannelFooter(channelId);
+                        
+                        <MudStack Row="true" AlignItems="AlignItems.Start" Class="mt-2">
+                            <MudIcon Icon="@Icons.Material.Filled.RssFeed" Color="Color.Primary" Class="mt-3" />
+                            <MudTextField Value="@footerValue"
+                                          ValueChanged="@((string v) => SetChannelFooter(channelId, v))"
+                                          Label="@($"{channel.Title} {(string.IsNullOrEmpty(channel.Username) ? "" : $"(@{channel.Username})")}")"
+                                          Variant="Variant.Outlined"
+                                          Lines="3"
+                                          HelperText="为此频道设置页脚（留空则不添加页脚）"
+                                          Style="flex: 1;" />
+                        </MudStack>
+                    }
+                }
+
+                <MudStack Row="true" Spacing="2" Class="mt-3">
+                    <MudTextField @bind-Value="unifiedFooter"
+                                  Label="统一页脚模板"
+                                  Variant="Variant.Outlined"
+                                  Lines="2"
+                                  HelperText="可选：填写后点击按钮应用到所有频道"
+                                  Style="flex: 1;" />
+                    <MudButton Color="Color.Secondary" 
+                               Variant="Variant.Outlined" 
+                               OnClick="ApplyUnifiedFooter"
+                               Class="mt-1">
+                        应用到全部
+                    </MudButton>
+                </MudStack>
+            }
+
+            <MudDivider Class="mt-4" />
+
+            <MudText Typo="Typo.subtitle2">文本处理选项</MudText>
+
+            <MudTextField @bind-Value="deleteAfterKeywordsInput"
+                          Label="删除关键词后面的内容"
+                          Variant="Variant.Outlined"
+                          Lines="2"
+                          HelperText="每行一个关键词，找到关键词后删除其后面的所有内容（优先执行）"
+                          Placeholder="✅ CẬP NHẬT TIN&#10;#付费广告" />
+
+            <MudSwitch @bind-Value="model.DeleteLinks"
+                       Label="过滤包含链接的消息"
+                       Color="Color.Primary"
+                       HelperText="如果删除关键词后的文本中仍包含链接（http/https/t.me），则跳过该消息不转发" />
+
+            <MudSwitch @bind-Value="model.DeleteMentions"
+                       Label="过滤包含@提及的消息"
+                       Color="Color.Primary"
+                       HelperText="如果删除关键词后的文本中仍包含@用户名，则跳过该消息不转发" />
+
+            <MudTextField @bind-Value="deletePatternsInput"
+                          Label="自定义删除正则表达式"
+                          Variant="Variant.Outlined"
+                          Lines="2"
+                          HelperText="每行一个正则表达式，匹配的内容将被删除" />
+
+            <MudSwitch @bind-Value="model.IsEnabled"
+                       Label="启用此规则"
+                       Color="Color.Primary" />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">取消</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit" Disabled="@saving">
+            @if (saving)
+            {
+                <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                <MudText Class="ms-2">保存中...</MudText>
+            }
+            else
+            {
+                <MudText>保存</MudText>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public ChannelForwardRule? Rule { get; set; }
+
+    private ChannelForwardRule model = new();
+    private List<Bot> bots = new();
+    private List<BotChannel> botChannels = new();
+    private bool saving;
+    private bool isLoading = true; // 添加加载状态标志
+    private long selectedSourceChannelId = 0;
+    private HashSet<long> selectedTargetChannelIds = new HashSet<long>();
+    private Dictionary<long, string> channelFooters = new(); // 存储每个频道的页脚
+    private string unifiedFooter = string.Empty; // 统一页脚模板
+    private string deleteAfterKeywordsInput = string.Empty;
+    private string deletePatternsInput = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var allBots = await BotService.GetAllBotsAsync();
+        bots = allBots.ToList();
+
+        if (Rule != null)
+        {
+            model = new ChannelForwardRule
+            {
+                Id = Rule.Id,
+                Name = Rule.Name,
+                BotId = Rule.BotId,
+                SourceChannelId = Rule.SourceChannelId,
+                SourceChannelUsername = Rule.SourceChannelUsername,
+                SourceChannelTitle = Rule.SourceChannelTitle,
+                TargetChannelIds = Rule.TargetChannelIds,
+                IsEnabled = Rule.IsEnabled,
+                FooterTemplate = Rule.FooterTemplate,
+                DeleteAfterKeywords = Rule.DeleteAfterKeywords,
+                DeletePatterns = Rule.DeletePatterns,
+                DeleteLinks = Rule.DeleteLinks,
+                DeleteMentions = Rule.DeleteMentions
+            };
+
+            // 加载该机器人的频道列表
+            await LoadBotChannelsAsync(Rule.BotId);
+            
+            // 设置选中的源频道
+            selectedSourceChannelId = Rule.SourceChannelId;
+            
+            // 设置选中的目标频道
+            var targetIds = Rule.TargetChannelIds
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(id => long.TryParse(id, out var parsed) ? parsed : 0L)
+                .Where(id => id != 0)
+                .ToHashSet();
+            selectedTargetChannelIds = targetIds;
+
+            // 解析目标频道配置（新格式）
+            if (!string.IsNullOrWhiteSpace(Rule.TargetChannelsConfig))
+            {
+                try
+                {
+                    var configs = System.Text.Json.JsonSerializer.Deserialize<List<TelegramPanel.Core.Models.ChannelFooterConfig>>(Rule.TargetChannelsConfig);
+                    if (configs != null)
+                    {
+                        foreach (var config in configs)
+                        {
+                            channelFooters[config.ChannelId] = config.Footer ?? string.Empty;
+                        }
+                    }
+                }
+                catch { }
+            }
+            else if (!string.IsNullOrWhiteSpace(Rule.FooterTemplate))
+            {
+                // 兼容旧数据：如果没有TargetChannelsConfig，使用FooterTemplate作为所有频道的默认页脚
+                foreach (var channelId in selectedTargetChannelIds)
+                {
+                    channelFooters[channelId] = Rule.FooterTemplate;
+                }
+            }
+            
+            // 确保所有选中的频道都在字典中有键（即使是空字符串）
+            foreach (var channelId in selectedTargetChannelIds)
+            {
+                if (!channelFooters.ContainsKey(channelId))
+                {
+                    channelFooters[channelId] = string.Empty;
+                }
+            }
+
+            // 解析删除关键词
+            if (!string.IsNullOrWhiteSpace(Rule.DeleteAfterKeywords))
+            {
+                try
+                {
+                    var keywords = System.Text.Json.JsonSerializer.Deserialize<List<string>>(Rule.DeleteAfterKeywords);
+                    if (keywords != null)
+                    {
+                        deleteAfterKeywordsInput = string.Join("\n", keywords);
+                    }
+                }
+                catch { }
+            }
+
+            // 解析删除模式
+            if (!string.IsNullOrWhiteSpace(Rule.DeletePatterns))
+            {
+                try
+                {
+                    var patterns = System.Text.Json.JsonSerializer.Deserialize<List<string>>(Rule.DeletePatterns);
+                    if (patterns != null)
+                    {
+                        deletePatternsInput = string.Join("\n", patterns);
+                    }
+                }
+                catch { }
+            }
+        }
+        else
+        {
+            model.IsEnabled = true;
+            if (bots.Count > 0)
+            {
+                model.BotId = bots[0].Id;
+                await LoadBotChannelsAsync(bots[0].Id);
+            }
+        }
+        
+        // 数据加载完成
+        isLoading = false;
+        StateHasChanged();
+    }
+
+    private async Task OnBotChanged(int botId)
+    {
+        isLoading = true;
+        model.BotId = botId;
+        selectedSourceChannelId = 0;
+        selectedTargetChannelIds = new HashSet<long>();
+        channelFooters.Clear(); // 清空页脚字典
+        await LoadBotChannelsAsync(botId);
+        isLoading = false;
+        StateHasChanged();
+    }
+
+    private async Task LoadBotChannelsAsync(int botId)
+    {
+        try
+        {
+            var channels = await BotService.GetChannelsAsync(botId);
+            botChannels = channels.ToList();
+            
+            if (botChannels.Count == 0)
+            {
+                Snackbar.Add("该机器人还没有同步频道，请先在\"机器人管理\"中同步频道列表", Severity.Info);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"加载频道列表失败：{ex.Message}", Severity.Warning);
+            botChannels = new List<BotChannel>();
+        }
+    }
+
+    private void OnTargetChannelsChanged(IEnumerable<long> values)
+    {
+        var newTargetIds = new HashSet<long>(values);
+        
+        // 移除取消选择的频道的页脚
+        var removedChannelIds = selectedTargetChannelIds.Except(newTargetIds).ToList();
+        foreach (var channelId in removedChannelIds)
+        {
+            channelFooters.Remove(channelId);
+        }
+        
+        // 为新选择的频道初始化页脚（使用空字符串）
+        var addedChannelIds = newTargetIds.Except(selectedTargetChannelIds).ToList();
+        foreach (var channelId in addedChannelIds)
+        {
+            if (!channelFooters.ContainsKey(channelId))
+            {
+                channelFooters[channelId] = string.Empty;
+            }
+        }
+        
+        selectedTargetChannelIds = newTargetIds;
+        StateHasChanged();
+    }
+
+    private void ApplyUnifiedFooter()
+    {
+        if (string.IsNullOrWhiteSpace(unifiedFooter))
+        {
+            Snackbar.Add("请先输入统一页脚模板", Severity.Warning);
+            return;
+        }
+
+        foreach (var channelId in selectedTargetChannelIds)
+        {
+            SetChannelFooter(channelId, unifiedFooter);
+        }
+
+        Snackbar.Add("已将统一页脚应用到所有频道", Severity.Success);
+        StateHasChanged();
+    }
+
+    private string GetChannelFooter(long channelId)
+    {
+        if (channelFooters.TryGetValue(channelId, out var footer))
+        {
+            return footer ?? string.Empty;
+        }
+        
+        // 如果字典中没有这个键，初始化它
+        channelFooters[channelId] = string.Empty;
+        return string.Empty;
+    }
+
+    private void SetChannelFooter(long channelId, string value)
+    {
+        channelFooters[channelId] = value ?? string.Empty;
+        StateHasChanged();
+    }
+
+    private async Task Submit()
+    {
+        // 验证输入
+        if (string.IsNullOrWhiteSpace(model.Name))
+        {
+            Snackbar.Add("请输入规则名称", Severity.Warning);
+            return;
+        }
+
+        if (model.BotId <= 0)
+        {
+            Snackbar.Add("请选择机器人", Severity.Warning);
+            return;
+        }
+
+        if (selectedSourceChannelId == 0)
+        {
+            Snackbar.Add("请选择源频道", Severity.Warning);
+            return;
+        }
+
+        if (!selectedTargetChannelIds.Any())
+        {
+            Snackbar.Add("请至少选择一个目标频道", Severity.Warning);
+            return;
+        }
+
+        saving = true;
+        try
+        {
+            // 设置源频道信息
+            model.SourceChannelId = selectedSourceChannelId;
+            var sourceChannel = botChannels.FirstOrDefault(c => c.TelegramId == selectedSourceChannelId);
+            if (sourceChannel != null)
+            {
+                model.SourceChannelUsername = sourceChannel.Username;
+                model.SourceChannelTitle = sourceChannel.Title;
+            }
+            
+            // 设置目标频道ID列表
+            model.TargetChannelIds = string.Join(",", selectedTargetChannelIds);
+
+            // 序列化删除关键词
+            if (!string.IsNullOrWhiteSpace(deleteAfterKeywordsInput))
+            {
+                var keywords = deleteAfterKeywordsInput
+                    .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .ToList();
+                model.DeleteAfterKeywords = System.Text.Json.JsonSerializer.Serialize(keywords);
+            }
+            else
+            {
+                model.DeleteAfterKeywords = null;
+            }
+
+            // 序列化删除模式
+            if (!string.IsNullOrWhiteSpace(deletePatternsInput))
+            {
+                var patterns = deletePatternsInput
+                    .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .ToList();
+                model.DeletePatterns = System.Text.Json.JsonSerializer.Serialize(patterns);
+            }
+            else
+            {
+                model.DeletePatterns = null;
+            }
+
+            // 序列化目标频道配置（包含每个频道的页脚）
+            var channelConfigs = selectedTargetChannelIds
+                .Select(channelId => new TelegramPanel.Core.Models.ChannelFooterConfig
+                {
+                    ChannelId = channelId,
+                    Footer = channelFooters.ContainsKey(channelId) ? channelFooters[channelId] : null
+                })
+                .ToList();
+            model.TargetChannelsConfig = System.Text.Json.JsonSerializer.Serialize(channelConfigs);
+
+            // 调试日志
+            Console.WriteLine($"Saving rule - IsEnabled: {model.IsEnabled}, DeleteLinks: {model.DeleteLinks}, DeleteMentions: {model.DeleteMentions}");
+            
+            if (model.Id > 0)
+            {
+                // 更新
+                await ForwardRuleService.UpdateRuleAsync(model);
+                Snackbar.Add("转发规则更新成功", Severity.Success);
+            }
+            else
+            {
+                // 创建
+                await ForwardRuleService.CreateRuleAsync(model);
+                Snackbar.Add("转发规则创建成功", Severity.Success);
+            }
+
+            MudDialog.Close(DialogResult.Ok(model));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"保存失败：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}
+

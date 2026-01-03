@@ -23,6 +23,7 @@ public class AppDbContext : DbContext
     public DbSet<Bot> Bots => Set<Bot>();
     public DbSet<BotChannel> BotChannels => Set<BotChannel>();
     public DbSet<BotChannelCategory> BotChannelCategories => Set<BotChannelCategory>();
+    public DbSet<ChannelForwardRule> ChannelForwardRules => Set<ChannelForwardRule>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -194,6 +195,23 @@ public class AppDbContext : DbContext
                 .WithMany(c => c.Channels)
                 .HasForeignKey(e => e.CategoryId)
                 .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // ChannelForwardRule配置
+        modelBuilder.Entity<ChannelForwardRule>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.TargetChannelIds).IsRequired();
+
+            entity.HasIndex(e => e.BotId);
+            entity.HasIndex(e => e.SourceChannelId);
+            entity.HasIndex(e => e.IsEnabled);
+
+            entity.HasOne(e => e.Bot)
+                .WithMany()
+                .HasForeignKey(e => e.BotId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

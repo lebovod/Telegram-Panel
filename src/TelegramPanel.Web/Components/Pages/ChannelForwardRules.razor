@@ -1,0 +1,255 @@
+@page "/channel-forward-rules"
+@using TelegramPanel.Core.Services
+@using TelegramPanel.Data.Entities
+@using TelegramPanel.Web.Components.Dialogs
+@inject ChannelForwardManagementService ForwardRuleService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>频道转发管理 - Telegram Panel</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudStack Spacing="3">
+        <MudPaper Elevation="2" Class="pa-4">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                <MudText Typo="Typo.h5">频道转发管理</MudText>
+                <MudButton Color="Color.Primary" 
+                           Variant="Variant.Filled" 
+                           StartIcon="@Icons.Material.Filled.Add"
+                           OnClick="OpenAddDialog">
+                    新建转发规则
+                </MudButton>
+            </MudStack>
+        </MudPaper>
+
+        <MudPaper Elevation="2" Class="pa-4">
+            <MudText Typo="Typo.body2" Color="Color.Info" Class="mb-4">
+                <MudIcon Icon="@Icons.Material.Filled.Info" Size="Size.Small" Class="mr-1" />
+                机器人会自动监听源频道的消息，处理后转发到目标频道。支持删除链接、关键词和添加底部模板。
+            </MudText>
+
+            @if (loading)
+            {
+                <MudStack AlignItems="AlignItems.Center" Spacing="2" Class="pa-8">
+                    <MudProgressCircular Indeterminate="true" />
+                    <MudText>加载中...</MudText>
+                </MudStack>
+            }
+            else if (!rules.Any())
+            {
+                <MudStack AlignItems="AlignItems.Center" Spacing="2" Class="pa-8">
+                    <MudIcon Icon="@Icons.Material.Filled.RuleFolder" Size="Size.Large" Color="Color.Default" />
+                    <MudText Typo="Typo.body1" Color="Color.Tertiary">还没有转发规则</MudText>
+                    <MudButton Color="Color.Primary" 
+                               Variant="Variant.Filled" 
+                               OnClick="OpenAddDialog">
+                        创建第一条规则
+                    </MudButton>
+                </MudStack>
+            }
+            else
+            {
+                <MudTable Items="@rules" Hover="true" Dense="true" Striped="true">
+                    <HeaderContent>
+                        <MudTh>规则名称</MudTh>
+                        <MudTh>机器人</MudTh>
+                        <MudTh>源频道</MudTh>
+                        <MudTh>目标频道数</MudTh>
+                        <MudTh>状态</MudTh>
+                        <MudTh>统计</MudTh>
+                        <MudTh>最后处理</MudTh>
+                        <MudTh>操作</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="规则名称">
+                            <MudStack Spacing="0">
+                                <MudText Typo="Typo.body2">@context.Name</MudText>
+                                @if (!string.IsNullOrEmpty(context.SourceChannelTitle))
+                                {
+                                    <MudText Typo="Typo.caption" Color="Color.Tertiary">
+                                        @context.SourceChannelTitle
+                                    </MudText>
+                                }
+                            </MudStack>
+                        </MudTd>
+                        <MudTd DataLabel="机器人">
+                            @if (context.Bot != null)
+                            {
+                                <MudChip Size="Size.Small" Color="Color.Info" T="string">
+                                    @context.Bot.Name
+                                </MudChip>
+                            }
+                        </MudTd>
+                        <MudTd DataLabel="源频道">
+                            @if (!string.IsNullOrEmpty(context.SourceChannelUsername))
+                            {
+                                <MudText Typo="Typo.body2">@context.SourceChannelUsername</MudText>
+                            }
+                            else
+                            {
+                                <MudText Typo="Typo.body2">@context.SourceChannelId</MudText>
+                            }
+                        </MudTd>
+                        <MudTd DataLabel="目标频道数">
+                            <MudChip Size="Size.Small" T="string">
+                                @context.TargetChannelIds.Split(',', StringSplitOptions.RemoveEmptyEntries).Length
+                            </MudChip>
+                        </MudTd>
+                        <MudTd DataLabel="状态">
+                            @{
+                                var ruleContext = context;
+                            }
+                            <MudSwitch Checked="@context.IsEnabled"
+                                       Color="Color.Success"
+                                       ThumbIcon="@(context.IsEnabled ? Icons.Material.Filled.Check : Icons.Material.Filled.Close)"
+                                       ThumbIconColor="Color.Surface"
+                                       Size="Size.Small"
+                                       T="bool"
+                                       @onclick:stopPropagation="true"
+                                       CheckedChanged="@(async (bool value) => { await ToggleStatus(ruleContext); })" />
+                        </MudTd>
+                        <MudTd DataLabel="统计">
+                            <MudStack Spacing="0">
+                                <MudText Typo="Typo.caption" Color="Color.Success">
+                                    ✓ @context.ForwardedCount 条已转发
+                                </MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Warning">
+                                    ⊘ @context.SkippedCount 条已跳过
+                                </MudText>
+                            </MudStack>
+                        </MudTd>
+                        <MudTd DataLabel="最后处理">
+                            @if (context.LastProcessedAt.HasValue)
+                            {
+                                <MudStack Spacing="0">
+                                    <PanelTime Value="@context.LastProcessedAt.Value" />
+                                    @if (context.LastProcessedMessageId.HasValue)
+                                    {
+                                        <MudText Typo="Typo.caption" Color="Color.Tertiary">
+                                            消息 #@context.LastProcessedMessageId
+                                        </MudText>
+                                    }
+                                </MudStack>
+                            }
+                            else
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Tertiary">未处理</MudText>
+                            }
+                        </MudTd>
+                        <MudTd DataLabel="操作">
+                            <MudStack Row="true" Spacing="1">
+                                <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                               Color="Color.Primary"
+                                               Size="Size.Small"
+                                               OnClick="@(() => OpenEditDialog(context))" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                               Color="Color.Error"
+                                               Size="Size.Small"
+                                               OnClick="@(() => DeleteRule(context))" />
+                            </MudStack>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+        </MudPaper>
+    </MudStack>
+</MudContainer>
+
+@code {
+    private List<ChannelForwardRule> rules = new();
+    private bool loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRulesAsync();
+    }
+
+    private async Task LoadRulesAsync()
+    {
+        loading = true;
+        try
+        {
+            rules = await ForwardRuleService.GetAllRulesAsync();
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task OpenAddDialog()
+    {
+        var options = new DialogOptions
+        {
+            CloseButton = true,
+            MaxWidth = MaxWidth.Medium,
+            FullWidth = true
+        };
+
+        var dialog = await DialogService.ShowAsync<ChannelForwardRuleDialog>("新建转发规则", options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled)
+        {
+            await LoadRulesAsync();
+        }
+    }
+
+    private async Task OpenEditDialog(ChannelForwardRule rule)
+    {
+        var parameters = new DialogParameters { ["Rule"] = rule };
+        var options = new DialogOptions
+        {
+            CloseButton = true,
+            MaxWidth = MaxWidth.Medium,
+            FullWidth = true
+        };
+
+        var dialog = await DialogService.ShowAsync<ChannelForwardRuleDialog>("编辑转发规则", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled)
+        {
+            await LoadRulesAsync();
+        }
+    }
+
+    private async Task ToggleStatus(ChannelForwardRule rule)
+    {
+        try
+        {
+            await ForwardRuleService.ToggleRuleStatusAsync(rule.Id);
+            Snackbar.Add($"规则 {rule.Name} 已{(rule.IsEnabled ? "禁用" : "启用")}", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"操作失败：{ex.Message}", Severity.Error);
+            // 恢复状态
+            rule.IsEnabled = !rule.IsEnabled;
+        }
+    }
+
+    private async Task DeleteRule(ChannelForwardRule rule)
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            "确认删除",
+            $"确定要删除转发规则 '{rule.Name}' 吗？此操作不可撤销。",
+            yesText: "删除",
+            cancelText: "取消");
+
+        if (confirmed == true)
+        {
+            try
+            {
+                await ForwardRuleService.DeleteRuleAsync(rule.Id);
+                Snackbar.Add("转发规则已删除", Severity.Success);
+                await LoadRulesAsync();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"删除失败：{ex.Message}", Severity.Error);
+            }
+        }
+    }
+}
+

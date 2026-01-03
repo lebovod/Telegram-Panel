@@ -9,17 +9,6 @@
     <MudAppBar Elevation="1">
         <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@ToggleDrawer" />
         <MudText Typo="Typo.h5" Class="ml-3">Telegram Panel</MudText>
-        <MudChip T="string" Size="Size.Small" Color="Color.Default" Class="ml-2" Style="cursor: pointer;"
-                 title="点击查看版本信息" OnClick="@ShowVersionInfo">
-            v@(VersionService.Version)
-        </MudChip>
-        @if (_updateInfo is { Success: true, UpdateAvailable: true } && !string.IsNullOrWhiteSpace(_updateInfo.LatestVersion))
-        {
-            <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Filled" Class="ml-2" Style="cursor: pointer;"
-                     title="发现新版本，点击查看更新说明" OnClick="@ShowVersionInfo">
-                新版本 v@(_updateInfo.LatestVersion)
-            </MudChip>
-        }
         <MudSpacer />
         <MudIconButton Icon="@Icons.Material.Filled.Settings"
                        Color="Color.Inherit"
@@ -49,13 +38,10 @@
 
 @using TelegramPanel.Web.Services
 @inject UiPreferencesService UiPreferences
-@inject IDialogService DialogService
-@inject UpdateCheckService UpdateCheck
 
 @code {
     private bool _drawerOpen = true;
     private bool _isDarkMode = true;
-    private UpdateCheckInfo? _updateInfo;
 
     private MudTheme _theme = new()
     {
@@ -79,7 +65,6 @@
     {
         // 从配置文件读取用户的主题偏好
         _isDarkMode = await UiPreferences.GetIsDarkModeAsync();
-        _ = LoadUpdateInfoAsync();
         // 确保初始化后 UI 能正确显示主题
         StateHasChanged();
     }
@@ -96,31 +81,5 @@
         await UiPreferences.SetIsDarkModeAsync(_isDarkMode);
         // 强制刷新组件状态，确保在异步操作后 UI 能及时更新
         StateHasChanged();
-    }
-
-    private async Task ShowVersionInfo()
-    {
-        var options = new DialogOptions
-        {
-            CloseOnEscapeKey = true,
-            MaxWidth = MaxWidth.Medium,
-            FullWidth = true
-        };
-
-        DialogService.Show<TelegramPanel.Web.Components.Dialogs.VersionInfoDialog>("版本信息", new DialogParameters(), options);
-        await Task.CompletedTask;
-    }
-
-    private async Task LoadUpdateInfoAsync()
-    {
-        try
-        {
-            _updateInfo = await UpdateCheck.GetLatestAsync(forceRefresh: false);
-            await InvokeAsync(StateHasChanged);
-        }
-        catch
-        {
-            // 检查更新失败不影响主界面
-        }
     }
 }

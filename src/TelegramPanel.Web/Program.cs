@@ -317,6 +317,7 @@ builder.Services.AddScoped<AccountExportService>();
 builder.Services.AddScoped<DataSyncService>();
 builder.Services.AddScoped<UiPreferencesService>();
 builder.Services.AddScoped<BotAdminPresetsService>();
+builder.Services.AddScoped<ChannelForwardManagementService>();
 
 // 注册任务处理器
 builder.Services.AddScoped<TelegramPanel.Modules.IModuleTaskHandler, UserJoinSubscribeTaskHandler>();
@@ -329,6 +330,7 @@ builder.Services.AddHostedService<BatchTaskBackgroundService>();
 builder.Services.AddHostedService<AccountOnlineStatusService>();
 builder.Services.AddHostedService<AccountDataAutoSyncBackgroundService>();
 builder.Services.AddHostedService<BotAutoSyncBackgroundService>();
+builder.Services.AddHostedService<ChannelForwardMonitorService>();
 builder.Services.AddHttpClient<TelegramBotApiClient>();
 builder.Services.AddModuleSystem(builder.Configuration, builder.Environment);
 builder.Services.AddSingleton<AppRestartService>();
@@ -414,21 +416,50 @@ using (var scope = app.Services.CreateScope())
             // - 已有表但无迁移历史：写入 baseline 到 __EFMigrationsHistory，再 Migrate()（避免永远无法升级）
             if (!hasAnyUserTables)
             {
-                db.Database.Migrate();
+                Log.Information("New database detected, applying all migrations...");
+                try
+                {
+                    db.Database.Migrate();
+                    Log.Information("Migrations applied successfully");
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "Failed to apply migrations, will try EnsureCreated");
+                    db.Database.EnsureCreated();
+                }
             }
             else if (hasHistory)
             {
-                db.Database.Migrate();
+                Log.Information("Existing database with migration history, applying pending migrations...");
+                try
+                {
+                    db.Database.Migrate();
+                    Log.Information("Pending migrations applied successfully");
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "Failed to apply pending migrations");
+                }
             }
             else
             {
+                Log.Information("Existing database without migration history, creating baseline and applying migrations...");
                 var baseline = migrations.First(); // EF 返回的顺序为从旧到新
                 EnsureMigrationsHistoryBaseline(conn, baseline);
-                db.Database.Migrate();
+                try
+                {
+                    db.Database.Migrate();
+                    Log.Information("Migrations applied successfully after baseline");
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "Failed to apply migrations after baseline");
+                }
             }
         }
         else
         {
+            Log.Information("No migrations found, calling EnsureCreated()...");
             db.Database.EnsureCreated();
         }
 
@@ -441,9 +472,72 @@ using (var scope = app.Services.CreateScope())
             while (reader.Read())
                 tables.Add(reader.GetString(0));
         }
+        
+        Log.Information("Database tables after migration: {Tables}", string.Join(", ", tables));
+        
+        // 检查已应用的迁移
+        var appliedMigrations = db.Database.GetAppliedMigrations().ToList();
+        Log.Information("Applied migrations: {Count} - {Migrations}", appliedMigrations.Count, string.Join(", ", appliedMigrations));
+        
+        // 检查待应用的迁移
+        var pendingMigrations = db.Database.GetPendingMigrations().ToList();
+        if (pendingMigrations.Any())
+        {
+            Log.Warning("Pending migrations not applied: {Migrations}", string.Join(", ", pendingMigrations));
+        }
+        
+        // 手动创建 ChannelForwardRules 表（如果不存在）
+        if (!tables.Contains("ChannelForwardRules", StringComparer.Ordinal))
+        {
+            Log.Warning("ChannelForwardRules table missing, creating manually...");
+            try
+            {
+                using var createCmd = conn.CreateCommand();
+                createCmd.CommandText = @"
+                    CREATE TABLE IF NOT EXISTS ChannelForwardRules (
+                        Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        Name TEXT NOT NULL,
+                        BotId INTEGER NOT NULL,
+                        SourceChannelId INTEGER NOT NULL,
+                        SourceChannelUsername TEXT,
+                        SourceChannelTitle TEXT,
+                        TargetChannelIds TEXT NOT NULL,
+                        IsEnabled INTEGER NOT NULL,
+                        FooterTemplate TEXT,
+                        DeleteAfterKeywords TEXT,
+                        DeletePatterns TEXT,
+                        DeleteLinks INTEGER NOT NULL,
+                        DeleteMentions INTEGER NOT NULL,
+                        LastProcessedAt TEXT,
+                        LastProcessedMessageId INTEGER,
+                        ForwardedCount INTEGER NOT NULL,
+                        SkippedCount INTEGER NOT NULL,
+                        CreatedAt TEXT NOT NULL,
+                        UpdatedAt TEXT NOT NULL,
+                        FOREIGN KEY (BotId) REFERENCES Bots(Id) ON DELETE CASCADE
+                    );
+                    
+                    CREATE INDEX IF NOT EXISTS IX_ChannelForwardRules_BotId ON ChannelForwardRules(BotId);
+                    CREATE INDEX IF NOT EXISTS IX_ChannelForwardRules_SourceChannelId ON ChannelForwardRules(SourceChannelId);
+                    CREATE INDEX IF NOT EXISTS IX_ChannelForwardRules_IsEnabled ON ChannelForwardRules(IsEnabled);
+                ";
+                createCmd.ExecuteNonQuery();
+                Log.Information("ChannelForwardRules table created successfully");
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to create ChannelForwardRules table manually");
+            }
+        }
+        
+        // 确保 ChannelForwardRules 表有 TargetChannelsConfig 列
+        if (tables.Contains("ChannelForwardRules", StringComparer.Ordinal))
+        {
+            EnsureSqliteColumn(conn, tableName: "ChannelForwardRules", columnName: "TargetChannelsConfig", columnType: "TEXT");
+        }
 
         // 兜底：开发阶段允许轻量演进 schema（避免已有库无迁移历史时无法自动更新）
-        // 仅做“新增列”这种非破坏性变更。
+        // 仅做"新增列"这种非破坏性变更。
         if (tables.Contains("Accounts", StringComparer.Ordinal))
         {
             EnsureSqliteColumn(conn, tableName: "Accounts", columnName: "Nickname", columnType: "TEXT");
