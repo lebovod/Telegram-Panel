@@ -107,6 +107,7 @@ public class ChannelForwardManagementService
         existing.DeletePatterns = rule.DeletePatterns;
         existing.DeleteLinks = rule.DeleteLinks;
         existing.DeleteMentions = rule.DeleteMentions;
+        existing.TargetChannelsConfig = rule.TargetChannelsConfig; // 更新目标频道页脚配置
         existing.UpdatedAt = DateTime.UtcNow;
 
         await _dbContext.SaveChangesAsync();
