@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Text.Json.Serialization;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -302,7 +303,10 @@ public class ChannelForwardMonitorService : BackgroundService
                             var channelFooter = GetFooterForChannel(rule, targetChatId);
                             
                             // 为该频道处理文本
-                            var processedText = ProcessMessageText(messageText, rule, channelFooter);
+                            var messageEntities = GetMessageEntities(post);
+                            var processedMessage = ProcessMessageTextWithEntities(messageText, messageEntities, rule, channelFooter);
+                            var processedText = processedMessage?.Text;
+                            var processedEntities = processedMessage?.Entities;
                             
                             // 如果返回null，表示应该跳过该消息
                             if (processedText == null && !string.IsNullOrEmpty(messageText))
@@ -333,6 +337,10 @@ public class ChannelForwardMonitorService : BackgroundService
                                 {
                                     // 如果需要修改，使用处理后的文本（即使是空字符串）
                                     mediaItem["caption"] = processedText ?? "";
+                                    if (processedEntities != null)
+                                    {
+                                        mediaItem["caption_entities"] = processedEntities;
+                                    }
                                 }
 
                                 mediaItems.Add(mediaItem);
@@ -536,7 +544,10 @@ public class ChannelForwardMonitorService : BackgroundService
                 var channelFooter = GetFooterForChannel(rule, targetChatId);
                 
                 // 为该频道处理文本
-                var processedText = ProcessMessageText(messageText, rule, channelFooter);
+                var messageEntities = GetMessageEntities(message);
+                var processedMessage = ProcessMessageTextWithEntities(messageText, messageEntities, rule, channelFooter);
+                var processedText = processedMessage?.Text;
+                var processedEntities = processedMessage?.Entities;
 
                 // 如果返回null，表示应该跳过该消息
                 if (processedText == null && !string.IsNullOrEmpty(messageText))
@@ -559,6 +570,11 @@ public class ChannelForwardMonitorService : BackgroundService
                         ["chat_id"] = targetChatId.ToString(),
                         ["text"] = processedText
                     };
+
+                    if (processedEntities != null)
+                    {
+                        sendParams["entities"] = JsonSerializer.Serialize(processedEntities);
+                    }
                     
                     await botApi.CallAsync(botToken, "sendMessage", sendParams, cancellationToken);
                 }
@@ -572,6 +588,7 @@ public class ChannelForwardMonitorService : BackgroundService
                         messageId, 
                         targetChatId, 
                         processedText,
+                        processedEntities,
                         needsModification,
                         cancellationToken);
                 }
@@ -650,16 +667,17 @@ public class ChannelForwardMonitorService : BackgroundService
     /// 处理消息文本（删除关键词后内容，检查链接和提及）
     /// 返回 null 表示应该跳过该消息
     /// </summary>
-    private string? ProcessMessageText(string? text, ChannelForwardRule rule, string? customFooter = null)
+    private ProcessedMessage? ProcessMessageTextWithEntities(string? text, List<TelegramEntity>? entities, ChannelForwardRule rule, string? customFooter = null)
     {
         if (string.IsNullOrEmpty(text))
         {
             _logger.LogDebug("消息文本为空，跳过处理");
-            return text;
+            return text == null ? null : new ProcessedMessage(text, entities);
         }
 
         var originalText = text;
         var processed = text;
+        var processedEntities = CloneEntities(entities);
 
         _logger.LogInformation("开始处理消息文本，原文长度: {Length}", text.Length);
 
@@ -696,6 +714,7 @@ public class ChannelForwardMonitorService : BackgroundService
                     _logger.LogInformation("✅ 找到关键词 '{Keyword}' 在位置 {Index}，删除后文本长度: {Before} -> {After}", 
                         keyword, index, processed.Length, before.Length);
                     processed = before;
+                    processedEntities = TrimEntities(processedEntities, processed.Length);
                     break; // 只处理第一个匹配的关键词
                 }
                 else
@@ -742,12 +761,16 @@ public class ChannelForwardMonitorService : BackgroundService
             _logger.LogInformation("添加页脚，最终文本长度: {Length}", processed.Length);
         }
 
-        var result = processed?.Trim();
+        var result = processed?.TrimEnd();
+        if (result != null && result.Length != processed.Length)
+        {
+            processedEntities = TrimEntities(processedEntities, result.Length);
+        }
         
         _logger.LogInformation("✅ 文本处理完成，原文长度: {Original}, 处理后长度: {Processed}", 
             originalText.Length, result?.Length ?? 0);
 
-        return result;
+        return result == null ? null : new ProcessedMessage(result, processedEntities);
     }
 
     /// <summary>
@@ -796,6 +819,7 @@ public class ChannelForwardMonitorService : BackgroundService
         int messageId,
         long toChatId,
         string? processedText,
+        List<TelegramEntity>? processedEntities,
         bool modifyCaption,
         CancellationToken cancellationToken)
     {
@@ -810,6 +834,10 @@ public class ChannelForwardMonitorService : BackgroundService
         if (modifyCaption && !string.IsNullOrEmpty(processedText))
         {
             parameters["caption"] = processedText;
+            if (processedEntities != null)
+            {
+                parameters["caption_entities"] = JsonSerializer.Serialize(processedEntities);
+            }
         }
 
         try
@@ -914,6 +942,123 @@ public class ChannelForwardMonitorService : BackgroundService
         }
 
         return null;
+    }
+
+    private List<TelegramEntity>? GetMessageEntities(JsonElement message)
+    {
+        var propertyName = message.TryGetProperty("caption", out _) ? "caption_entities" : "entities";
+        if (!message.TryGetProperty(propertyName, out var entitiesEl) || entitiesEl.ValueKind != JsonValueKind.Array)
+            return null;
+
+        var entities = new List<TelegramEntity>();
+        foreach (var entityEl in entitiesEl.EnumerateArray())
+        {
+            if (!entityEl.TryGetProperty("type", out var typeEl) ||
+                !entityEl.TryGetProperty("offset", out var offsetEl) ||
+                !entityEl.TryGetProperty("length", out var lengthEl))
+                continue;
+
+            var entity = new TelegramEntity
+            {
+                Type = typeEl.GetString() ?? string.Empty,
+                Offset = offsetEl.GetInt32(),
+                Length = lengthEl.GetInt32(),
+                Url = entityEl.TryGetProperty("url", out var urlEl) ? urlEl.GetString() : null,
+                Language = entityEl.TryGetProperty("language", out var langEl) ? langEl.GetString() : null,
+                CustomEmojiId = entityEl.TryGetProperty("custom_emoji_id", out var emojiEl) ? emojiEl.GetString() : null,
+                User = entityEl.TryGetProperty("user", out var userEl) ? userEl.Clone() : null
+            };
+
+            entities.Add(entity);
+        }
+
+        return entities.Count == 0 ? null : entities;
+    }
+
+    private static List<TelegramEntity>? CloneEntities(List<TelegramEntity>? entities)
+    {
+        if (entities == null)
+            return null;
+
+        return entities
+            .Select(entity => new TelegramEntity
+            {
+                Type = entity.Type,
+                Offset = entity.Offset,
+                Length = entity.Length,
+                Url = entity.Url,
+                Language = entity.Language,
+                CustomEmojiId = entity.CustomEmojiId,
+                User = entity.User
+            })
+            .ToList();
+    }
+
+    private static List<TelegramEntity>? TrimEntities(List<TelegramEntity>? entities, int maxLength)
+    {
+        if (entities == null)
+            return null;
+
+        var trimmed = new List<TelegramEntity>();
+        foreach (var entity in entities)
+        {
+            if (entity.Offset >= maxLength)
+                continue;
+
+            var end = entity.Offset + entity.Length;
+            if (end <= maxLength)
+            {
+                trimmed.Add(entity);
+                continue;
+            }
+
+            var newLength = maxLength - entity.Offset;
+            if (newLength <= 0)
+                continue;
+
+            trimmed.Add(new TelegramEntity
+            {
+                Type = entity.Type,
+                Offset = entity.Offset,
+                Length = newLength,
+                Url = entity.Url,
+                Language = entity.Language,
+                CustomEmojiId = entity.CustomEmojiId,
+                User = entity.User
+            });
+        }
+
+        return trimmed.Count == 0 ? null : trimmed;
+    }
+
+    private sealed record ProcessedMessage(string Text, List<TelegramEntity>? Entities);
+
+    private sealed class TelegramEntity
+    {
+        [JsonPropertyName("type")]
+        public string Type { get; set; } = string.Empty;
+
+        [JsonPropertyName("offset")]
+        public int Offset { get; set; }
+
+        [JsonPropertyName("length")]
+        public int Length { get; set; }
+
+        [JsonPropertyName("url")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? Url { get; set; }
+
+        [JsonPropertyName("language")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? Language { get; set; }
+
+        [JsonPropertyName("custom_emoji_id")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? CustomEmojiId { get; set; }
+
+        [JsonPropertyName("user")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public JsonElement? User { get; set; }
     }
 
     /// <summary>
