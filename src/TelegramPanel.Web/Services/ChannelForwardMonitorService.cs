@@ -304,7 +304,8 @@ public class ChannelForwardMonitorService : BackgroundService
                             
                             // 为该频道处理文本
                             var messageEntities = GetMessageEntities(post);
-                            var processedMessage = ProcessMessageTextWithEntities(messageText, messageEntities, rule, channelFooter);
+                            var hasInlineKeyboardLinks = HasInlineKeyboardLinks(post);
+                            var processedMessage = ProcessMessageTextWithEntities(messageText, messageEntities, rule, hasInlineKeyboardLinks, channelFooter);
                             var processedText = processedMessage?.Text;
                             var processedEntities = processedMessage?.Entities;
                             
@@ -545,7 +546,8 @@ public class ChannelForwardMonitorService : BackgroundService
                 
                 // 为该频道处理文本
                 var messageEntities = GetMessageEntities(message);
-                var processedMessage = ProcessMessageTextWithEntities(messageText, messageEntities, rule, channelFooter);
+                var hasInlineKeyboardLinks = HasInlineKeyboardLinks(message);
+                var processedMessage = ProcessMessageTextWithEntities(messageText, messageEntities, rule, hasInlineKeyboardLinks, channelFooter);
                 var processedText = processedMessage?.Text;
                 var processedEntities = processedMessage?.Entities;
 
@@ -667,7 +669,7 @@ public class ChannelForwardMonitorService : BackgroundService
     /// 处理消息文本（删除关键词后内容，检查链接和提及）
     /// 返回 null 表示应该跳过该消息
     /// </summary>
-    private ProcessedMessage? ProcessMessageTextWithEntities(string? text, List<TelegramEntity>? entities, ChannelForwardRule rule, string? customFooter = null)
+    private ProcessedMessage? ProcessMessageTextWithEntities(string? text, List<TelegramEntity>? entities, ChannelForwardRule rule, bool hasInlineKeyboardLinks = false, string? customFooter = null)
     {
         if (string.IsNullOrEmpty(text))
         {
@@ -739,6 +741,16 @@ public class ChannelForwardMonitorService : BackgroundService
                 _logger.LogInformation("❌ 检测到t.me链接，跳过整个消息");
                 return null; // 返回null表示跳过该消息
             }
+            var hasRemainingClickableEntity = processedEntities != null && processedEntities.Any(e =>
+                string.Equals(e.Type, "url", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(e.Type, "text_link", StringComparison.OrdinalIgnoreCase));
+
+            if (hasRemainingClickableEntity || hasInlineKeyboardLinks)
+            {
+                _logger.LogInformation("❌ 检测到可点击链接实体或按钮链接（关键词截断后仍存在），跳过整个消息");
+                return null;
+            }
+
             _logger.LogInformation("✅ 未检测到链接，继续处理");
         }
 
@@ -942,6 +954,33 @@ public class ChannelForwardMonitorService : BackgroundService
         }
 
         return null;
+    }
+
+
+    private static bool HasInlineKeyboardLinks(JsonElement message)
+    {
+        if (!message.TryGetProperty("reply_markup", out var replyMarkup) || replyMarkup.ValueKind != JsonValueKind.Object)
+            return false;
+
+        if (!replyMarkup.TryGetProperty("inline_keyboard", out var keyboard) || keyboard.ValueKind != JsonValueKind.Array)
+            return false;
+
+        foreach (var row in keyboard.EnumerateArray())
+        {
+            if (row.ValueKind != JsonValueKind.Array)
+                continue;
+
+            foreach (var button in row.EnumerateArray())
+            {
+                if (button.ValueKind != JsonValueKind.Object)
+                    continue;
+
+                if (button.TryGetProperty("url", out var urlEl) && !string.IsNullOrWhiteSpace(urlEl.GetString()))
+                    return true;
+            }
+        }
+
+        return false;
     }
 
     private List<TelegramEntity>? GetMessageEntities(JsonElement message)
