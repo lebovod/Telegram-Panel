@@ -1,7 +1,6 @@
 @inherits LayoutComponentBase
 @using TelegramPanel.Web.Services
 @inject UiPreferencesService UiPreferences
-@inject NavigationManager Navigation
 
 <MudThemeProvider @bind-IsDarkMode="_isDarkMode" Theme="_theme" />
 <MudPopoverProvider />
@@ -14,7 +13,7 @@
                        Color="Color.Inherit"
                        Edge="Edge.Start"
                        OnClick="ToggleDrawer"
-                       AriaLabel="展开或收起导航" />
+                       aria-label="展开或收起导航" />
 
         <div class="tp-appbar-brand">
             <MudText Typo="Typo.h6" Class="tp-brand-title">天浩独家开发 V9</MudText>
@@ -35,14 +34,14 @@
             <MudIconButton Icon="@Icons.Material.Filled.Settings"
                            Color="Color.Inherit"
                            Href="/settings"
-                           AriaLabel="系统设置" />
+                           aria-label="系统设置" />
         </MudTooltip>
 
         <MudTooltip Text="切换明暗模式">
             <MudIconButton Icon="@(_isDarkMode ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)"
                            Color="Color.Inherit"
                            OnClick="ToggleDarkMode"
-                           AriaLabel="切换明暗模式" />
+                           aria-label="切换明暗模式" />
         </MudTooltip>
     </MudAppBar>
 
@@ -67,13 +66,6 @@
 
     private readonly MudTheme _theme = new()
     {
-        Typography = new Typography
-        {
-            Default = new DefaultTypography
-            {
-                FontFamily = new[] { "Inter", "PingFang SC", "Microsoft YaHei", "Segoe UI", "sans-serif" }
-            }
-        },
         LayoutProperties = new LayoutProperties
         {
             DefaultBorderRadius = "10px",
