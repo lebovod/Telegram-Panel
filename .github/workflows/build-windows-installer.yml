@@ -1,0 +1,97 @@
+name: Build Windows Installer
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - agent/ui-practical-refresh
+    paths:
+      - 'src/**'
+      - 'installer/**'
+      - '.github/workflows/build-windows-installer.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-installer:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore web project
+        run: dotnet restore src/TelegramPanel.Web/TelegramPanel.Web.csproj
+
+      - name: Build web project
+        run: dotnet build src/TelegramPanel.Web/TelegramPanel.Web.csproj -c Release --no-restore
+
+      - name: Publish web project
+        run: >-
+          dotnet publish src/TelegramPanel.Web/TelegramPanel.Web.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=false
+          -p:DebugType=None
+          -p:DebugSymbols=false
+          -o artifacts/publish
+
+      - name: Publish Windows launcher
+        run: >-
+          dotnet publish src/TianHaoV9.Launcher/TianHaoV9.Launcher.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -o artifacts/launcher
+
+      - name: Copy launcher into application
+        shell: pwsh
+        run: |
+          Copy-Item artifacts/launcher/TianHaoV9.exe artifacts/publish/TianHaoV9.exe -Force
+          if (-not (Test-Path artifacts/publish/TelegramPanel.Web.exe)) {
+            throw 'TelegramPanel.Web.exe was not generated.'
+          }
+          if (-not (Test-Path artifacts/publish/TianHaoV9.exe)) {
+            throw 'TianHaoV9.exe was not generated.'
+          }
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $source = (Resolve-Path 'artifacts/publish').Path
+          & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' "/DSourceDir=$source" 'installer/TianHaoV9.iss'
+
+      - name: Verify installer
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem artifacts/installer/TianHaoV9-Setup-win-x64.exe -ErrorAction Stop
+          Write-Host "Installer: $($installer.FullName)"
+          Write-Host "Size: $($installer.Length) bytes"
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: TianHaoV9-Windows-Installer
+          path: artifacts/installer/TianHaoV9-Setup-win-x64.exe
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload portable build
+        uses: actions/upload-artifact@v4
+        with:
+          name: TianHaoV9-Windows-Portable
+          path: artifacts/publish/**
+          if-no-files-found: error
+          retention-days: 30
