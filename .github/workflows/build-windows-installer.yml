@@ -9,6 +9,13 @@ on:
       - 'src/**'
       - 'installer/**'
       - '.github/workflows/build-windows-installer.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'installer/**'
+      - '.github/workflows/build-windows-installer.yml'
 
 permissions:
   contents: read
