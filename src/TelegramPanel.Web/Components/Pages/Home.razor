@@ -9,176 +9,271 @@
 @inject ISnackbar Snackbar
 @using TelegramPanel.Data.Entities
 
-<PageTitle>Telegram Panel - 仪表盘</PageTitle>
+<PageTitle>天浩 V9 - 运营工作台</PageTitle>
 
-<MudText Typo="Typo.h4" Class="mb-4">仪表盘</MudText>
+<div class="tp-page-heading">
+    <div>
+        <MudText Typo="Typo.h4" Class="tp-page-title">运营工作台</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">
+            先看异常，再执行任务；核心操作两步内到达。
+        </MudText>
+    </div>
+    <MudStack Row="true" Spacing="1" Class="tp-flex-wrap">
+        <MudButton Variant="Variant.Outlined"
+                   Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Refresh"
+                   Disabled="@_loading"
+                   OnClick="LoadDashboardAsync">
+            刷新数据
+        </MudButton>
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Sync"
+                   Disabled="@_syncing"
+                   OnClick="SyncAllAccounts">
+            @(_syncing ? "同步中..." : "同步全部")
+        </MudButton>
+    </MudStack>
+</div>
 
-<MudGrid>
-    <MudItem xs="12" sm="6" md="3">
-        <MudPaper Class="pa-4" Elevation="2">
-            <div class="d-flex align-center">
-                <MudIcon Icon="@Icons.Material.Filled.AccountCircle" Size="Size.Large" Color="Color.Primary" Class="mr-3" />
-                <div>
-                    <MudText Typo="Typo.subtitle2" Class="mud-text-secondary">账号总数</MudText>
-                    <MudText Typo="Typo.h5">@_accountCount</MudText>
-                </div>
+<MudGrid Spacing="2" Class="tp-kpi-grid">
+    <MudItem xs="12" sm="6" lg="3">
+        <MudPaper Class="tp-kpi-card" Elevation="0">
+            <div class="tp-kpi-icon tp-kpi-primary">
+                <MudIcon Icon="@Icons.Material.Filled.ManageAccounts" />
+            </div>
+            <div class="tp-kpi-content">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">账号总数</MudText>
+                <MudText Typo="Typo.h4" Class="tp-kpi-value">@_accountCount</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Success">@_onlineAccountCount 个在线</MudText>
             </div>
         </MudPaper>
     </MudItem>
 
-    <MudItem xs="12" sm="6" md="3">
-        <MudPaper Class="pa-4" Elevation="2">
-            <div class="d-flex align-center">
-                <MudIcon Icon="@Icons.Material.Filled.Campaign" Size="Size.Large" Color="Color.Secondary" Class="mr-3" />
-                <div>
-                    <MudText Typo="Typo.subtitle2" Class="mud-text-secondary">频道总数</MudText>
-                    <MudText Typo="Typo.h5">@_channelCount</MudText>
-                </div>
+    <MudItem xs="12" sm="6" lg="3">
+        <MudPaper Class="tp-kpi-card" Elevation="0">
+            <div class="tp-kpi-icon tp-kpi-secondary">
+                <MudIcon Icon="@Icons.Material.Filled.Campaign" />
+            </div>
+            <div class="tp-kpi-content">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">已同步频道</MudText>
+                <MudText Typo="Typo.h4" Class="tp-kpi-value">@_channelCount</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">可用于发布与转发</MudText>
             </div>
         </MudPaper>
     </MudItem>
 
-    <MudItem xs="12" sm="6" md="3">
-        <MudPaper Class="pa-4" Elevation="2">
-            <div class="d-flex align-center">
-                <MudIcon Icon="@Icons.Material.Filled.Group" Size="Size.Large" Color="Color.Tertiary" Class="mr-3" />
-                <div>
-                    <MudText Typo="Typo.subtitle2" Class="mud-text-secondary">群组总数</MudText>
-                    <MudText Typo="Typo.h5">@_groupCount</MudText>
-                </div>
+    <MudItem xs="12" sm="6" lg="3">
+        <MudPaper Class="tp-kpi-card" Elevation="0">
+            <div class="tp-kpi-icon tp-kpi-tertiary">
+                <MudIcon Icon="@Icons.Material.Filled.Groups" />
+            </div>
+            <div class="tp-kpi-content">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">已同步群组</MudText>
+                <MudText Typo="Typo.h4" Class="tp-kpi-value">@_groupCount</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">统一管理来源与目标</MudText>
             </div>
         </MudPaper>
     </MudItem>
 
-    <MudItem xs="12" sm="6" md="3">
-        <MudPaper Class="pa-4" Elevation="2">
-            <div class="d-flex align-center">
-                <MudIcon Icon="@Icons.Material.Filled.PlaylistAddCheck" Size="Size.Large" Color="Color.Success" Class="mr-3" />
-                <div>
-                    <MudText Typo="Typo.subtitle2" Class="mud-text-secondary">活跃任务</MudText>
-                    <MudText Typo="Typo.h5">@_activeTaskCount</MudText>
-                </div>
+    <MudItem xs="12" sm="6" lg="3">
+        <MudPaper Class="tp-kpi-card" Elevation="0">
+            <div class="tp-kpi-icon tp-kpi-warning">
+                <MudIcon Icon="@Icons.Material.Filled.PendingActions" />
+            </div>
+            <div class="tp-kpi-content">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">运行中任务</MudText>
+                <MudText Typo="Typo.h4" Class="tp-kpi-value">@_activeTaskCount</MudText>
+                <MudText Typo="Typo.caption" Color="@(_activeTaskCount > 0 ? Color.Info : Color.Success)">
+                    @(_activeTaskCount > 0 ? "正在执行" : "当前无积压")
+                </MudText>
             </div>
         </MudPaper>
     </MudItem>
 </MudGrid>
 
-<MudGrid Class="mt-4">
-    <MudItem xs="12" md="6">
-        <MudPaper Class="pa-4" Elevation="2">
-            <MudText Typo="Typo.h6" Class="mb-3">快速操作</MudText>
-            <MudStack Row="true" Spacing="2" Class="flex-wrap">
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Upload" Href="/accounts/import">
-                    导入账号
-                </MudButton>
-                <MudButton Variant="Variant.Filled" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.Add" Href="/channels/create">
-                    创建频道
-                </MudButton>
-                <MudButton Variant="Variant.Filled" Color="Color.Info" StartIcon="@Icons.Material.Filled.Sync"
-                           Disabled="@_syncing"
-                           OnClick="@(async (MouseEventArgs _) => await SyncAllAccounts())">
-                    同步频道/群组数据
-                </MudButton>
-            </MudStack>
+<MudGrid Spacing="2" Class="mt-1">
+    <MudItem xs="12" lg="8">
+        <MudPaper Class="tp-panel" Elevation="0">
+            <div class="tp-panel-header">
+                <div>
+                    <MudText Typo="Typo.h6">主链路快捷入口</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">按实际工作顺序排列，不堆叠低频按钮。</MudText>
+                </div>
+            </div>
+
+            <div class="tp-workflow-grid">
+                <a class="tp-workflow-card" href="/accounts/import">
+                    <span class="tp-workflow-step">01</span>
+                    <MudIcon Icon="@Icons.Material.Filled.FileUpload" Color="Color.Primary" />
+                    <strong>导入账号</strong>
+                    <small>录入 Session 或登录账号</small>
+                </a>
+                <a class="tp-workflow-card" href="/accounts">
+                    <span class="tp-workflow-step">02</span>
+                    <MudIcon Icon="@Icons.Material.Filled.FactCheck" Color="Color.Primary" />
+                    <strong>检查账号</strong>
+                    <small>确认在线、受限及封禁状态</small>
+                </a>
+                <a class="tp-workflow-card" href="/channels">
+                    <span class="tp-workflow-step">03</span>
+                    <MudIcon Icon="@Icons.Material.Filled.Hub" Color="Color.Primary" />
+                    <strong>配置频道</strong>
+                    <small>管理来源、目标与频道分组</small>
+                </a>
+                <a class="tp-workflow-card" href="/tasks">
+                    <span class="tp-workflow-step">04</span>
+                    <MudIcon Icon="@Icons.Material.Filled.RocketLaunch" Color="Color.Primary" />
+                    <strong>执行任务</strong>
+                    <small>创建、查看并追踪执行结果</small>
+                </a>
+            </div>
         </MudPaper>
     </MudItem>
 
-    <MudItem xs="12" md="6">
-        <MudPaper Class="pa-4" Elevation="2">
-            <MudText Typo="Typo.h6" Class="mb-3">系统状态</MudText>
-            <MudList T="string" Dense="true">
-                <MudListItem Icon="@Icons.Material.Filled.Circle" IconColor="Color.Success">
-                    在线账号: @_onlineAccountCount
-                </MudListItem>
-                <MudListItem Icon="@Icons.Material.Filled.Circle" IconColor="Color.Warning">
-                    受限账号: @_limitedAccountCount
-                </MudListItem>
-                <MudListItem Icon="@Icons.Material.Filled.Circle" IconColor="Color.Error">
-                    封禁账号: @_bannedAccountCount
-                </MudListItem>
-            </MudList>
+    <MudItem xs="12" lg="4">
+        <MudPaper Class="tp-panel tp-health-panel" Elevation="0">
+            <div class="tp-panel-header">
+                <div>
+                    <MudText Typo="Typo.h6">账号健康度</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">异常优先显示，减少漏处理。</MudText>
+                </div>
+                <MudChip T="string" Size="Size.Small" Color="@GetHealthColor()" Variant="Variant.Filled">
+                    @GetHealthLabel()
+                </MudChip>
+            </div>
+
+            <div class="tp-health-list">
+                <a href="/accounts" class="tp-health-row">
+                    <span><i class="tp-health-dot tp-health-online"></i>在线账号</span>
+                    <strong>@_onlineAccountCount</strong>
+                </a>
+                <a href="/accounts" class="tp-health-row">
+                    <span><i class="tp-health-dot tp-health-limited"></i>受限账号</span>
+                    <strong>@_limitedAccountCount</strong>
+                </a>
+                <a href="/accounts" class="tp-health-row">
+                    <span><i class="tp-health-dot tp-health-banned"></i>封禁账号</span>
+                    <strong>@_bannedAccountCount</strong>
+                </a>
+            </div>
+
+            @if (_limitedAccountCount > 0 || _bannedAccountCount > 0)
+            {
+                <MudAlert Severity="Severity.Warning" Dense="true" Variant="Variant.Outlined" Class="mt-4">
+                    当前有异常账号，请先处理再执行批量任务。
+                </MudAlert>
+            }
         </MudPaper>
     </MudItem>
 </MudGrid>
 
-<MudPaper Class="pa-4 mt-4" Elevation="2">
-    <MudText Typo="Typo.h6" Class="mb-3">最近任务</MudText>
-    <MudTable Items="@_recentTasks" Hover="true" Dense="true">
+<MudPaper Class="tp-panel mt-4" Elevation="0">
+    <div class="tp-panel-header tp-table-heading">
+        <div>
+            <MudText Typo="Typo.h6">最近任务</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">最近 10 条执行记录，失败状态直接突出。</MudText>
+        </div>
+        <MudButton Variant="Variant.Text" Color="Color.Primary" EndIcon="@Icons.Material.Filled.ArrowForward" Href="/tasks">
+            查看全部
+        </MudButton>
+    </div>
+
+    <MudTable Items="@_recentTasks" Hover="true" Dense="true" Class="tp-table" Breakpoint="Breakpoint.Sm">
         <HeaderContent>
-            <MudTh>任务名称</MudTh>
+            <MudTh>任务</MudTh>
             <MudTh>类型</MudTh>
             <MudTh>状态</MudTh>
             <MudTh>进度</MudTh>
             <MudTh>创建时间</MudTh>
         </HeaderContent>
         <RowTemplate>
-            <MudTd>@context.Name</MudTd>
-            <MudTd>@context.Type</MudTd>
-            <MudTd>
-                <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">@context.Status</MudChip>
+            <MudTd DataLabel="任务"><strong>@context.Name</strong></MudTd>
+            <MudTd DataLabel="类型">@context.Type</MudTd>
+            <MudTd DataLabel="状态">
+                <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)" Variant="Variant.Filled">
+                    @context.Status
+                </MudChip>
             </MudTd>
-            <MudTd>
-                <MudProgressLinear Value="@context.Progress" Max="@context.Total" Color="Color.Primary" Size="Size.Small" />
+            <MudTd DataLabel="进度">
+                <div class="tp-progress-cell">
+                    <MudProgressLinear Value="@context.Progress" Max="@(Math.Max(context.Total, 1))" Color="@GetStatusColor(context.Status)" Size="Size.Small" Rounded="true" />
+                    <span>@context.Progress/@context.Total</span>
+                </div>
             </MudTd>
-            <MudTd>@context.CreatedAt.ToString("MM-dd HH:mm")</MudTd>
+            <MudTd DataLabel="创建时间">@context.CreatedAt.ToString("MM-dd HH:mm")</MudTd>
         </RowTemplate>
         <NoRecordsContent>
-            <MudText Class="pa-4">暂无任务记录</MudText>
+            <div class="tp-empty-state">
+                <MudIcon Icon="@Icons.Material.Filled.Inbox" Size="Size.Large" Color="Color.Secondary" />
+                <MudText>暂无任务记录</MudText>
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" Href="/tasks">创建第一个任务</MudButton>
+            </div>
         </NoRecordsContent>
     </MudTable>
 </MudPaper>
 
 @code {
-    private int _accountCount = 0;
-    private int _channelCount = 0;
-    private int _groupCount = 0;
-    private int _activeTaskCount = 0;
-    private int _onlineAccountCount = 0;
-    private int _limitedAccountCount = 0;
-    private int _bannedAccountCount = 0;
+    private int _accountCount;
+    private int _channelCount;
+    private int _groupCount;
+    private int _activeTaskCount;
+    private int _onlineAccountCount;
+    private int _limitedAccountCount;
+    private int _bannedAccountCount;
     private List<TaskItem> _recentTasks = new();
-    private bool _syncing = false;
+    private bool _syncing;
+    private bool _loading;
 
-    protected override async Task OnInitializedAsync()
-    {
-        await LoadDashboardAsync();
-    }
+    protected override async Task OnInitializedAsync() => await LoadDashboardAsync();
 
     private async Task LoadDashboardAsync()
     {
-        var accounts = (await AccountManagement.GetAllAccountsAsync()).ToList();
-        var activeAccounts = (await AccountManagement.GetActiveAccountsAsync()).ToList();
+        if (_loading)
+            return;
 
-        _accountCount = accounts.Count;
-        _onlineAccountCount = activeAccounts.Count;
-        _bannedAccountCount = accounts.Count(IsBannedAccount);
-        _limitedAccountCount = accounts.Count(a => !IsBannedAccount(a) && IsLimitedAccount(a));
+        _loading = true;
+        try
+        {
+            var accounts = (await AccountManagement.GetAllAccountsAsync()).ToList();
+            var activeAccounts = (await AccountManagement.GetActiveAccountsAsync()).ToList();
 
-        _channelCount = await ChannelManagement.GetTotalChannelCountAsync();
-        _groupCount = await GroupManagement.GetTotalGroupCountAsync();
+            _accountCount = accounts.Count;
+            _onlineAccountCount = activeAccounts.Count;
+            _bannedAccountCount = accounts.Count(IsBannedAccount);
+            _limitedAccountCount = accounts.Count(a => !IsBannedAccount(a) && IsLimitedAccount(a));
+            _channelCount = await ChannelManagement.GetTotalChannelCountAsync();
+            _groupCount = await GroupManagement.GetTotalGroupCountAsync();
 
-        var runningTasks = (await BatchTaskManagement.GetRunningTasksAsync()).ToList();
-        _activeTaskCount = runningTasks.Count;
+            var runningTasks = (await BatchTaskManagement.GetRunningTasksAsync()).ToList();
+            _activeTaskCount = runningTasks.Count;
 
-        var recent = (await BatchTaskManagement.GetRecentTasksAsync(10)).ToList();
-        _recentTasks = recent
-            .OrderByDescending(t => t.CreatedAt)
-            .Select(t => new TaskItem(
-                Name: $"{t.TaskType} #{t.Id}",
-                Type: t.TaskType,
-                Status: MapTaskStatus(t.Status),
-                Progress: Math.Min(t.Completed + t.Failed, t.Total),
-                Total: t.Total,
-                CreatedAt: t.CreatedAt
-            ))
-            .ToList();
+            var recent = (await BatchTaskManagement.GetRecentTasksAsync(10)).ToList();
+            _recentTasks = recent
+                .OrderByDescending(t => t.CreatedAt)
+                .Select(t => new TaskItem(
+                    Name: $"{t.TaskType} #{t.Id}",
+                    Type: t.TaskType,
+                    Status: MapTaskStatus(t.Status),
+                    Progress: Math.Min(t.Completed + t.Failed, t.Total),
+                    Total: t.Total,
+                    CreatedAt: t.CreatedAt))
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"工作台加载失败：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
     }
 
     private static bool IsLimitedAccount(Account account)
     {
         var summary = (account.TelegramStatusSummary ?? string.Empty).Trim();
-        if (summary.Length == 0)
-            return false;
+        if (summary.Length == 0) return false;
 
         return summary.Contains("受限", StringComparison.OrdinalIgnoreCase)
                || summary.Contains("冻结", StringComparison.OrdinalIgnoreCase)
@@ -190,8 +285,7 @@
     private static bool IsBannedAccount(Account account)
     {
         var summary = (account.TelegramStatusSummary ?? string.Empty).Trim();
-        if (summary.Length == 0)
-            return false;
+        if (summary.Length == 0) return false;
 
         return summary.Contains("封禁", StringComparison.OrdinalIgnoreCase)
                || summary.Contains("停用", StringComparison.OrdinalIgnoreCase)
@@ -205,23 +299,23 @@
     {
         if (_syncing)
         {
-            Snackbar.Add("正在同步中，请稍候...", Severity.Warning);
+            Snackbar.Add("同步任务正在执行，请勿重复提交。", Severity.Warning);
             return;
         }
 
         _syncing = true;
-        Snackbar.Add("开始同步频道和群组信息...", Severity.Info);
+        Snackbar.Add("已开始同步全部有效账号。", Severity.Info);
 
         try
         {
             var summary = await DataSync.SyncAllActiveAccountsAsync(CancellationToken.None);
 
-            foreach (var failure in summary.AccountFailures)
-                Snackbar.Add($"账号 {failure.Phone} 同步失败：{failure.Error}", Severity.Warning);
+            foreach (var failure in summary.AccountFailures.Take(5))
+                Snackbar.Add($"账号 {failure.Phone}：{failure.Error}", Severity.Warning);
 
-            Snackbar.Add($"同步完成：{summary.TotalChannelsSynced} 个频道，{summary.TotalGroupsSynced} 个群组", summary.AccountFailures.Count == 0 ? Severity.Success : Severity.Warning);
+            var severity = summary.AccountFailures.Count == 0 ? Severity.Success : Severity.Warning;
+            Snackbar.Add($"同步完成：{summary.TotalChannelsSynced} 个频道，{summary.TotalGroupsSynced} 个群组，{summary.AccountFailures.Count} 个失败。", severity);
             await LoadDashboardAsync();
-            StateHasChanged();
         }
         catch (Exception ex)
         {
@@ -233,11 +327,26 @@
         }
     }
 
-    private Color GetStatusColor(string status) => status switch
+    private Color GetHealthColor() => (_limitedAccountCount, _bannedAccountCount) switch
+    {
+        (_, > 0) => Color.Error,
+        (> 0, _) => Color.Warning,
+        _ => Color.Success
+    };
+
+    private string GetHealthLabel() => (_limitedAccountCount, _bannedAccountCount) switch
+    {
+        (_, > 0) => "需要处理",
+        (> 0, _) => "存在受限",
+        _ => "状态正常"
+    };
+
+    private static Color GetStatusColor(string status) => status switch
     {
         "运行中" => Color.Info,
         "已完成" => Color.Success,
         "失败" => Color.Error,
+        "等待中" => Color.Warning,
         _ => Color.Default
     };
 
@@ -247,8 +356,9 @@
         "completed" => "已完成",
         "failed" => "失败",
         "pending" => "等待中",
+        "queued" => "等待中",
         _ => status
     };
 
-    private record TaskItem(string Name, string Type, string Status, int Progress, int Total, DateTime CreatedAt);
+    private sealed record TaskItem(string Name, string Type, string Status, int Progress, int Total, DateTime CreatedAt);
 }

@@ -1,46 +1,50 @@
 @inject TelegramPanel.Web.Modules.ModuleContributionRegistry Contributions
 
-<MudNavMenu>
-    <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">
-        仪表盘
+<div class="tp-nav-header">
+    <div class="tp-nav-logo">V9</div>
+    <div class="tp-nav-brand-copy">
+        <MudText Typo="Typo.subtitle1" Class="tp-nav-brand-title">运营控制台</MudText>
+        <div class="tp-nav-status">
+            <span class="tp-status-dot"></span>
+            <span>系统已启动</span>
+        </div>
+    </div>
+</div>
+
+<MudNavMenu Class="tp-nav-menu">
+    <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.SpaceDashboard">
+        工作台
     </MudNavLink>
 
-    <MudNavGroup Title="账号管理" Icon="@Icons.Material.Filled.AccountCircle" Expanded="true">
-        <MudNavLink Href="/accounts" Icon="@Icons.Material.Filled.People">账号列表</MudNavLink>
-        <MudNavLink Href="/accounts/import" Icon="@Icons.Material.Filled.Upload">导入账号</MudNavLink>
-        <MudNavLink Href="/accounts/login" Icon="@Icons.Material.Filled.Login">手机号登录</MudNavLink>
-        <MudNavLink Href="/accounts/categories" Icon="@Icons.Material.Filled.Category">账号分类</MudNavLink>
+    <div class="tp-nav-section-label">核心业务</div>
+
+    <MudNavGroup Title="账号与采集" Icon="@Icons.Material.Filled.ManageAccounts" Expanded="true">
+        <MudNavLink Href="/accounts" Icon="@Icons.Material.Filled.PeopleAlt">账号列表</MudNavLink>
+        <MudNavLink Href="/accounts/import" Icon="@Icons.Material.Filled.FileUpload">批量导入</MudNavLink>
+        <MudNavLink Href="/accounts/login" Icon="@Icons.Material.Filled.Login">账号登录</MudNavLink>
+        <MudNavLink Href="/accounts/categories" Icon="@Icons.Material.Filled.Label">账号分类</MudNavLink>
     </MudNavGroup>
 
-    <MudNavGroup Title="频道管理" Icon="@Icons.Material.Filled.Campaign" Expanded="true">
-        <MudNavLink Href="/channels" Icon="@Icons.Material.Filled.List">频道列表</MudNavLink>
-        <MudNavLink Href="/channels/create" Icon="@Icons.Material.Filled.Add">创建频道</MudNavLink>
-        <MudNavLink Href="/channels/groups" Icon="@Icons.Material.Filled.Folder">频道分组</MudNavLink>
+    <MudNavGroup Title="频道与群组" Icon="@Icons.Material.Filled.Forum">
+        <MudNavLink Href="/channels" Icon="@Icons.Material.Filled.Campaign">频道列表</MudNavLink>
+        <MudNavLink Href="/channels/create" Icon="@Icons.Material.Filled.AddCircleOutline">创建频道</MudNavLink>
+        <MudNavLink Href="/channels/groups" Icon="@Icons.Material.Filled.FolderCopy">频道分组</MudNavLink>
+        <MudNavLink Href="/groups" Icon="@Icons.Material.Filled.Groups">群组列表</MudNavLink>
     </MudNavGroup>
 
-    <MudNavGroup Title="群组管理" Icon="@Icons.Material.Filled.Group">
-        <MudNavLink Href="/groups" Icon="@Icons.Material.Filled.List">群组列表</MudNavLink>
+    <MudNavGroup Title="发布与自动化" Icon="@Icons.Material.Filled.RocketLaunch" Expanded="true">
+        <MudNavLink Href="/tasks" Icon="@Icons.Material.Filled.TaskAlt">任务中心</MudNavLink>
+        <MudNavLink Href="/channel-forward-rules" Icon="@Icons.Material.Filled.ForwardToInbox">转发规则</MudNavLink>
+        <MudNavLink Href="/bots" Icon="@Icons.Material.Filled.SmartToy">机器人账号</MudNavLink>
+        <MudNavLink Href="/bots/channels" Icon="@Icons.Material.Filled.Hub">Bot 频道</MudNavLink>
     </MudNavGroup>
-
-    <MudNavGroup Title="机器人管理" Icon="@Icons.Material.Filled.SmartToy">
-        <MudNavLink Href="/bots" Icon="@Icons.Material.Filled.SmartToy">机器人列表</MudNavLink>
-        <MudNavLink Href="/bots/channels" Icon="@Icons.Material.Filled.List">Bot 频道</MudNavLink>
-        <MudNavLink Href="/channel-forward-rules" Icon="@Icons.Material.Filled.ForwardToInbox">频道转发</MudNavLink>
-    </MudNavGroup>
-
-    <MudNavLink Href="/tasks" Icon="@Icons.Material.Filled.Assignment">
-        任务中心
-    </MudNavLink>
-
-    <MudNavLink Href="/modules" Icon="@Icons.Material.Filled.Extension">
-        模块管理
-    </MudNavLink>
 
     @if (Contributions.NavItems.Count > 0 || Contributions.Pages.Count > 0)
     {
-        <MudNavGroup Title="扩展模块" Icon="@Icons.Material.Filled.Extension">
+        <div class="tp-nav-section-label">业务扩展</div>
+        <MudNavGroup Title="扩展功能" Icon="@Icons.Material.Filled.Extension">
             @foreach (var item in Contributions.NavItems
-                .OrderBy(x => x.Definition.Group ?? "", StringComparer.OrdinalIgnoreCase)
+                .OrderBy(x => x.Definition.Group ?? string.Empty, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(x => x.Definition.Order)
                 .ThenBy(x => x.Definition.Title, StringComparer.OrdinalIgnoreCase))
             {
@@ -50,7 +54,7 @@
             }
 
             @foreach (var modulePage in Contributions.Pages
-                .OrderBy(x => x.Definition.Group ?? "", StringComparer.OrdinalIgnoreCase)
+                .OrderBy(x => x.Definition.Group ?? string.Empty, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(x => x.Definition.Order)
                 .ThenBy(x => x.Definition.Title, StringComparer.OrdinalIgnoreCase))
             {
@@ -62,11 +66,15 @@
         </MudNavGroup>
     }
 
-    <MudNavLink Href="/apis" Icon="@Icons.Material.Filled.Link">
-        API 管理
-    </MudNavLink>
+    <div class="tp-nav-section-label">系统</div>
 
-    <MudNavLink Href="/logout" Icon="@Icons.Material.Filled.Logout">
-        退出登录
-    </MudNavLink>
+    <MudNavLink Href="/modules" Icon="@Icons.Material.Filled.Widgets">模块管理</MudNavLink>
+    <MudNavLink Href="/apis" Icon="@Icons.Material.Filled.Api">API 管理</MudNavLink>
+    <MudNavLink Href="/settings" Icon="@Icons.Material.Filled.Settings">系统设置</MudNavLink>
+    <MudNavLink Href="/logout" Icon="@Icons.Material.Filled.Logout">退出登录</MudNavLink>
 </MudNavMenu>
+
+<div class="tp-nav-footer">
+    <MudIcon Icon="@Icons.Material.Filled.Verified" Size="Size.Small" Color="Color.Success" />
+    <span>V9 实用版 · 主链路优先</span>
+</div>

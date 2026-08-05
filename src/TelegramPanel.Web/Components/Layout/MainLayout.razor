@@ -1,85 +1,126 @@
 @inherits LayoutComponentBase
+@using TelegramPanel.Web.Services
+@inject UiPreferencesService UiPreferences
 
 <MudThemeProvider @bind-IsDarkMode="_isDarkMode" Theme="_theme" />
 <MudPopoverProvider />
 <MudDialogProvider />
 <MudSnackbarProvider />
 
-<MudLayout>
-    <MudAppBar Elevation="1">
-        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@ToggleDrawer" />
-        <MudText Typo="Typo.h5" Class="ml-3">Telegram Panel</MudText>
+<MudLayout Class="tp-shell">
+    <MudAppBar Elevation="0" Class="tp-appbar">
+        <MudIconButton Icon="@Icons.Material.Filled.MenuOpen"
+                       Color="Color.Inherit"
+                       Edge="Edge.Start"
+                       OnClick="ToggleDrawer"
+                       aria-label="展开或收起导航" />
+
+        <div class="tp-appbar-brand">
+            <MudText Typo="Typo.h6" Class="tp-brand-title">天浩独家开发 V9</MudText>
+            <MudText Typo="Typo.caption" Class="tp-brand-subtitle">采集 · 处理 · 发布 · 追踪</MudText>
+        </div>
+
         <MudSpacer />
-        <MudIconButton Icon="@Icons.Material.Filled.Settings"
-                       Color="Color.Inherit"
-                       Href="/settings"
-                       title="系统设置" />
-        <MudIconButton Icon="@Icons.Custom.Brands.GitHub"
-                       Color="Color.Inherit"
-                       Href="https://github.com/moeacgx/Telegram-Panel"
-                       Target="_blank"
-                       Rel="noopener noreferrer"
-                       title="GitHub" />
-        <MudIconButton Icon="@(_isDarkMode ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)"
-                       Color="Color.Inherit"
-                       OnClick="@ToggleDarkMode" />
+
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.AddCircle"
+                   Href="/tasks"
+                   Class="tp-top-action tp-hide-xs">
+            新建任务
+        </MudButton>
+
+        <MudTooltip Text="系统设置">
+            <MudIconButton Icon="@Icons.Material.Filled.Settings"
+                           Color="Color.Inherit"
+                           Href="/settings"
+                           aria-label="系统设置" />
+        </MudTooltip>
+
+        <MudTooltip Text="切换明暗模式">
+            <MudIconButton Icon="@(_isDarkMode ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)"
+                           Color="Color.Inherit"
+                           OnClick="ToggleDarkMode"
+                           aria-label="切换明暗模式" />
+        </MudTooltip>
     </MudAppBar>
 
-    <MudDrawer @bind-Open="_drawerOpen" ClipMode="DrawerClipMode.Always" Elevation="2">
+    <MudDrawer @bind-Open="_drawerOpen"
+               ClipMode="DrawerClipMode.Always"
+               Elevation="0"
+               Variant="DrawerVariant.Responsive"
+               Class="tp-drawer">
         <NavMenu />
     </MudDrawer>
 
-    <MudMainContent Class="pt-16 px-4">
-        <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="my-4">
+    <MudMainContent Class="tp-main-content">
+        <MudContainer MaxWidth="MaxWidth.False" Class="tp-page-container">
             @Body
         </MudContainer>
     </MudMainContent>
 </MudLayout>
 
-@using TelegramPanel.Web.Services
-@inject UiPreferencesService UiPreferences
-
 @code {
     private bool _drawerOpen = true;
     private bool _isDarkMode = true;
 
-    private MudTheme _theme = new()
+    private readonly MudTheme _theme = new()
     {
+        LayoutProperties = new LayoutProperties
+        {
+            DefaultBorderRadius = "10px",
+            DrawerWidthLeft = "248px"
+        },
         PaletteLight = new PaletteLight
         {
-            Primary = "#1976d2",
-            Secondary = "#00bcd4",
-            AppbarBackground = "#1976d2"
+            Primary = "#2563EB",
+            Secondary = "#0F766E",
+            Tertiary = "#7C3AED",
+            AppbarBackground = "#FFFFFF",
+            AppbarText = "#172033",
+            Background = "#F4F7FB",
+            Surface = "#FFFFFF",
+            DrawerBackground = "#FFFFFF",
+            DrawerText = "#334155",
+            TextPrimary = "#172033",
+            TextSecondary = "#64748B",
+            Divider = "#E5EAF2",
+            Success = "#15803D",
+            Warning = "#B45309",
+            Error = "#DC2626",
+            Info = "#0369A1"
         },
         PaletteDark = new PaletteDark
         {
-            Primary = "#90caf9",
-            Secondary = "#80deea",
-            AppbarBackground = "#1e1e2d",
-            Background = "#121212",
-            Surface = "#1e1e2d"
+            Primary = "#60A5FA",
+            Secondary = "#2DD4BF",
+            Tertiary = "#A78BFA",
+            AppbarBackground = "#111827",
+            AppbarText = "#F8FAFC",
+            Background = "#0B1120",
+            Surface = "#111827",
+            DrawerBackground = "#0F172A",
+            DrawerText = "#CBD5E1",
+            TextPrimary = "#F8FAFC",
+            TextSecondary = "#94A3B8",
+            Divider = "#243044",
+            Success = "#4ADE80",
+            Warning = "#FBBF24",
+            Error = "#F87171",
+            Info = "#38BDF8"
         }
     };
 
     protected override async Task OnInitializedAsync()
     {
-        // 从配置文件读取用户的主题偏好
         _isDarkMode = await UiPreferences.GetIsDarkModeAsync();
-        // 确保初始化后 UI 能正确显示主题
-        StateHasChanged();
     }
 
-    private void ToggleDrawer()
-    {
-        _drawerOpen = !_drawerOpen;
-    }
+    private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
 
     private async Task ToggleDarkMode()
     {
         _isDarkMode = !_isDarkMode;
-        // 保存主题偏好到配置文件
         await UiPreferences.SetIsDarkModeAsync(_isDarkMode);
-        // 强制刷新组件状态，确保在异步操作后 UI 能及时更新
-        StateHasChanged();
     }
 }
